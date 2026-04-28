@@ -5,6 +5,7 @@
 用自然語言詢問晶圓廠 SOP 文件，系統自動從知識圖譜（Neo4j）和向量庫（Chroma）
 撈出 SOP 步驟、設備依賴關係、前置條件，再由 LLM 合成答案，並經過四道 guardrail 過濾。
 
+![image](https://github.com/jirong-spec/fab-sop-rag/blob/main/visualisation.png)
 ---
 
 ## 一、這是什麼
