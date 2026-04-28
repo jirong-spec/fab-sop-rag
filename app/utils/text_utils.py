@@ -54,3 +54,24 @@ def extract_candidate_tokens(text: str) -> list[str]:
 # Backward-compatible alias (used by candidate_entities.py)
 def extract_uppercase_tokens(text: str) -> list[str]:
     return extract_candidate_tokens(text)
+
+
+# SOP document ID pattern: SOP_Etch_001, SOP_Pump_002, SOP_Vent_003, …
+_SOP_DOC_ID = re.compile(r"\bSOP_[A-Za-z0-9]+_[A-Za-z0-9]+\b")
+
+
+def extract_source_docs(triples: list[str]) -> list[str]:
+    """
+    Extract unique SOP document IDs from a list of graph triples.
+
+    Used to populate the `source_docs` citation field in AskResponse so
+    callers can trace which SOP documents back the generated answer.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for triple in triples:
+        for doc_id in _SOP_DOC_ID.findall(triple):
+            if doc_id not in seen:
+                seen.add(doc_id)
+                result.append(doc_id)
+    return result

@@ -41,11 +41,15 @@ class AskResponse(BaseModel):
         default_factory=list, description="從 vector 文件中提取的候選實體"
     )
     evidence_triples: list[str] = Field(default_factory=list, description="圖譜三元組")
+    source_docs: list[str] = Field(
+        default_factory=list,
+        description="答案引用的 SOP 文件 ID，從 evidence_triples 提取，用於 citation traceability",
+    )
     guardrail_results: list[GuardrailResult] = Field(default_factory=list)
     reasoning_type: str = Field(
         ...,
         description=(
-            "graph_rag | blocked_injection | blocked_off_topic "
+            "graph_rag | baseline_rag | blocked_injection | blocked_off_topic "
             "| blocked_low_evidence | answered_with_warning"
         ),
     )

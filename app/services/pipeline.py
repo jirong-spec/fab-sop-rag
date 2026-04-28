@@ -10,6 +10,7 @@ from app.services.guardrails import (
 )
 from app.services.retrieval_service import retrieve
 from app.services.answer_service import generate_answer
+from app.utils.text_utils import extract_source_docs
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
         entities=entities,
         candidate_entities=entities,
         evidence_triples=triples,
+        source_docs=extract_source_docs(triples),
         guardrail_results=guardrail_results,
         reasoning_type=reasoning_type,
         confidence=confidence,
