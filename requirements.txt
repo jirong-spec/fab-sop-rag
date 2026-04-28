@@ -1,0 +1,20 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Settings & validation
+pydantic>=2.9.0
+pydantic-settings>=2.3.0
+
+# LLM client (OpenAI-compatible local API)
+openai>=1.40.0
+httpx>=0.27.0
+
+# Graph database
+neo4j>=5.23.0
+
+# Vector store + embeddings
+langchain-community>=0.2.16
+sentence-transformers>=3.0.0
+chromadb>=0.5.0
+langchain-huggingface==0.1.2

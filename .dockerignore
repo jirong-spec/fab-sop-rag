@@ -1,0 +1,32 @@
+# Secrets — never bake into image
+.env
+.env.*
+
+# Python artefacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Local virtualenv
+.venv
+venv
+
+# Docs — not needed inside the container
+*.md
+*.rst
+*.txt
+!requirements.txt
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
+
+# Git
+.git
+.gitignore

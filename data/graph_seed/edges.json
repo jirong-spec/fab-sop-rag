@@ -1,0 +1,420 @@
+[
+  {
+    "type": "TRIGGERS_SOP",
+    "from_label": "Anomaly",
+    "from_id": "PressureAnomaly",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Etch_001",
+    "properties": {}
+  },
+  {
+    "type": "TRIGGERS_SOP",
+    "from_label": "Anomaly",
+    "from_id": "PumpDegradation",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "CheckVacuumPump",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Etch_001",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "VerifyGasFlow",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Etch_001",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "InspectChamberLeak",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Etch_001",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "RestoreProcessCondition",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Etch_001",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "ReadPumpStatus",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "CheckBearingVibration",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "VerifyPumpCooling",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "LogAndClearAlarm",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "IsolateRFAndGas",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Vent_003",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "SwitchPumpToStandby",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Vent_003",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "OpenVentValve",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Vent_003",
+    "properties": {}
+  },
+  {
+    "type": "DEFINED_IN",
+    "from_label": "SOPStep",
+    "from_id": "ConfirmAtmPressure",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Vent_003",
+    "properties": {}
+  },
+  {
+    "type": "FIRST_STEP",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Etch_001",
+    "to_label": "SOPStep",
+    "to_id": "CheckVacuumPump",
+    "properties": {}
+  },
+  {
+    "type": "FIRST_STEP",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Pump_002",
+    "to_label": "SOPStep",
+    "to_id": "ReadPumpStatus",
+    "properties": {}
+  },
+  {
+    "type": "FIRST_STEP",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Vent_003",
+    "to_label": "SOPStep",
+    "to_id": "IsolateRFAndGas",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "CheckVacuumPump",
+    "to_label": "SOPStep",
+    "to_id": "VerifyGasFlow",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "VerifyGasFlow",
+    "to_label": "SOPStep",
+    "to_id": "InspectChamberLeak",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "InspectChamberLeak",
+    "to_label": "SOPStep",
+    "to_id": "RestoreProcessCondition",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "ReadPumpStatus",
+    "to_label": "SOPStep",
+    "to_id": "CheckBearingVibration",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "CheckBearingVibration",
+    "to_label": "SOPStep",
+    "to_id": "VerifyPumpCooling",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "VerifyPumpCooling",
+    "to_label": "SOPStep",
+    "to_id": "LogAndClearAlarm",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "IsolateRFAndGas",
+    "to_label": "SOPStep",
+    "to_id": "SwitchPumpToStandby",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "SwitchPumpToStandby",
+    "to_label": "SOPStep",
+    "to_id": "OpenVentValve",
+    "properties": {}
+  },
+  {
+    "type": "NEXT_STEP",
+    "from_label": "SOPStep",
+    "from_id": "OpenVentValve",
+    "to_label": "SOPStep",
+    "to_id": "ConfirmAtmPressure",
+    "properties": {}
+  },
+  {
+    "type": "REQUIRES_STATUS",
+    "from_label": "SOPStep",
+    "from_id": "CheckVacuumPump",
+    "to_label": "Equipment",
+    "to_id": "TurboVacuumPump",
+    "properties": {
+      "required_status": "RUNNING"
+    }
+  },
+  {
+    "type": "REQUIRES_STATUS",
+    "from_label": "SOPStep",
+    "from_id": "ReadPumpStatus",
+    "to_label": "Equipment",
+    "to_id": "PumpControlPanel",
+    "properties": {
+      "required_status": "ACCESSIBLE"
+    }
+  },
+  {
+    "type": "REQUIRES_STATUS",
+    "from_label": "SOPStep",
+    "from_id": "IsolateRFAndGas",
+    "to_label": "Equipment",
+    "to_id": "RFPowerSupply",
+    "properties": {
+      "required_status": "OFF"
+    }
+  },
+  {
+    "type": "REQUIRES_STATUS",
+    "from_label": "SOPStep",
+    "from_id": "SwitchPumpToStandby",
+    "to_label": "Equipment",
+    "to_id": "TurboVacuumPump",
+    "properties": {
+      "required_status": "RUNNING"
+    }
+  },
+  {
+    "type": "REQUIRES_STATUS",
+    "from_label": "SOPStep",
+    "from_id": "OpenVentValve",
+    "to_label": "Equipment",
+    "to_id": "N2PurgeSystem",
+    "properties": {
+      "required_status": "READY"
+    }
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "VerifyGasFlow",
+    "to_label": "SOPStep",
+    "to_id": "CheckVacuumPump",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "InspectChamberLeak",
+    "to_label": "SOPStep",
+    "to_id": "VerifyGasFlow",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "RestoreProcessCondition",
+    "to_label": "SOPStep",
+    "to_id": "InspectChamberLeak",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "CheckBearingVibration",
+    "to_label": "SOPStep",
+    "to_id": "ReadPumpStatus",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "VerifyPumpCooling",
+    "to_label": "SOPStep",
+    "to_id": "CheckBearingVibration",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "LogAndClearAlarm",
+    "to_label": "SOPStep",
+    "to_id": "VerifyPumpCooling",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "SwitchPumpToStandby",
+    "to_label": "SOPStep",
+    "to_id": "IsolateRFAndGas",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "OpenVentValve",
+    "to_label": "SOPStep",
+    "to_id": "SwitchPumpToStandby",
+    "properties": {}
+  },
+  {
+    "type": "DEPENDS_ON",
+    "from_label": "SOPStep",
+    "from_id": "ConfirmAtmPressure",
+    "to_label": "SOPStep",
+    "to_id": "OpenVentValve",
+    "properties": {}
+  },
+  {
+    "type": "PRECONDITION",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Etch_001",
+    "to_label": "Equipment",
+    "to_id": "TurboVacuumPump",
+    "properties": {
+      "required_status": "RUNNING",
+      "condition_id": "PRECONDITION-P01"
+    }
+  },
+  {
+    "type": "PRECONDITION",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Etch_001",
+    "to_label": "Equipment",
+    "to_id": "RFPowerSupply",
+    "properties": {
+      "required_status": "STANDBY_OR_OFF",
+      "condition_id": "PRECONDITION-P02"
+    }
+  },
+  {
+    "type": "PRECONDITION",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Vent_003",
+    "to_label": "Equipment",
+    "to_id": "RFPowerSupply",
+    "properties": {
+      "required_status": "OFF",
+      "condition_id": "PRECONDITION-VNT01"
+    }
+  },
+  {
+    "type": "PRECONDITION",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Vent_003",
+    "to_label": "Equipment",
+    "to_id": "N2PurgeSystem",
+    "properties": {
+      "required_status": "READY",
+      "condition_id": "PRECONDITION-VNT04"
+    }
+  },
+  {
+    "type": "INTERLOCK_WITH",
+    "from_label": "Equipment",
+    "from_id": "EtchStation",
+    "to_label": "Equipment",
+    "to_id": "PressureInterlock",
+    "properties": {
+      "interlock_id": "IL-E001",
+      "trigger": "pressure > 10 mTorr",
+      "action": "disable RF power"
+    }
+  },
+  {
+    "type": "INTERLOCK_WITH",
+    "from_label": "Equipment",
+    "from_id": "EtchStation",
+    "to_label": "Equipment",
+    "to_id": "VentValve",
+    "properties": {
+      "interlock_id": "IL-E003",
+      "trigger": "leak_rate > 0.5 mTorr/min",
+      "action": "trigger emergency vent"
+    }
+  },
+  {
+    "type": "CROSS_DOC_DEPENDENCY",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Etch_001",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Pump_002",
+    "properties": {
+      "reason": "TurboVacuumPump 狀態定義（RUNNING/FAULT 等）源自 SOP_Pump_002 第 4 節"
+    }
+  },
+  {
+    "type": "CROSS_DOC_DEPENDENCY",
+    "from_label": "SOPDocument",
+    "from_id": "SOP_Etch_001",
+    "to_label": "SOPDocument",
+    "to_id": "SOP_Vent_003",
+    "properties": {
+      "reason": "SOP_Etch_001 步驟 3 InspectChamberLeak 若洩漏超標，須執行 SOP_Vent_003"
+    }
+  }
+]

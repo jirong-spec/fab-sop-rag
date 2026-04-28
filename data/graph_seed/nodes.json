@@ -1,0 +1,261 @@
+[
+  {
+    "label": "SOPDocument",
+    "properties": {
+      "id": "SOP_Etch_001",
+      "title": "蝕刻站壓力異常處置程序",
+      "version": "Rev. 2.1",
+      "equipment": "EtchStation"
+    }
+  },
+  {
+    "label": "SOPDocument",
+    "properties": {
+      "id": "SOP_Pump_002",
+      "title": "真空泵浦狀態檢查程序",
+      "version": "Rev. 1.4",
+      "equipment": "TurboVacuumPump"
+    }
+  },
+  {
+    "label": "SOPDocument",
+    "properties": {
+      "id": "SOP_Vent_003",
+      "title": "腔體洩壓程序",
+      "version": "Rev. 3.0",
+      "equipment": "EtchStation"
+    }
+  },
+  {
+    "label": "Anomaly",
+    "properties": {
+      "id": "PressureAnomaly",
+      "description": "蝕刻站腔體壓力超出製程允許範圍",
+      "threshold_high_mTorr": 5.0,
+      "threshold_low_mTorr": 0.5,
+      "duration_sec": 30
+    }
+  },
+  {
+    "label": "Anomaly",
+    "properties": {
+      "id": "PumpDegradation",
+      "description": "真空泵浦效能衰退或轉速異常",
+      "threshold_rpm_pct": 80
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "EtchStation",
+      "type": "ProcessChamber",
+      "description": "乾式蝕刻製程腔體"
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "TurboVacuumPump",
+      "type": "VacuumPump",
+      "description": "渦輪分子泵浦，維持腔體高真空",
+      "rated_rpm": 27000,
+      "normal_temp_max_C": 55
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "DryPump",
+      "type": "VacuumPump",
+      "description": "乾式前級泵浦",
+      "exhaust_pressure_max_Pa": 100
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "RFPowerSupply",
+      "type": "PowerSource",
+      "description": "射頻電源供應器"
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "VentValve",
+      "type": "Valve",
+      "description": "腔體洩壓閥，用於引入 N₂ 恢復大氣壓"
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "N2PurgeSystem",
+      "type": "GasSystem",
+      "description": "氮氣置換系統，N₂ 壓力需 ≥ 5 psig"
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "PumpControlPanel",
+      "type": "ControlInterface",
+      "description": "泵浦操作控制介面"
+    }
+  },
+  {
+    "label": "Equipment",
+    "properties": {
+      "id": "PressureInterlock",
+      "type": "SafetyInterlock",
+      "description": "壓力聯鎖裝置，防止超壓損壞腔體"
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "CheckVacuumPump",
+      "description": "確認真空泵浦運作狀態",
+      "sop_doc": "SOP_Etch_001",
+      "step_number": 1
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "VerifyGasFlow",
+      "description": "確認製程氣體流量在正常範圍",
+      "sop_doc": "SOP_Etch_001",
+      "step_number": 2
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "InspectChamberLeak",
+      "description": "執行腔體洩漏測試",
+      "sop_doc": "SOP_Etch_001",
+      "step_number": 3
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "RestoreProcessCondition",
+      "description": "恢復製程條件並確認壓力穩定",
+      "sop_doc": "SOP_Etch_001",
+      "step_number": 4
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "ReadPumpStatus",
+      "description": "從設備控制介面讀取泵浦即時狀態",
+      "sop_doc": "SOP_Pump_002",
+      "step_number": 1
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "CheckBearingVibration",
+      "description": "使用振動感測器確認軸承狀態",
+      "sop_doc": "SOP_Pump_002",
+      "step_number": 2
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "VerifyPumpCooling",
+      "description": "確認冷卻水迴路正常運作",
+      "sop_doc": "SOP_Pump_002",
+      "step_number": 3
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "LogAndClearAlarm",
+      "description": "記錄檢查結果並清除警報",
+      "sop_doc": "SOP_Pump_002",
+      "step_number": 4
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "IsolateRFAndGas",
+      "description": "確認所有高風險能源已隔離",
+      "sop_doc": "SOP_Vent_003",
+      "step_number": 1
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "SwitchPumpToStandby",
+      "description": "將 TurboVacuumPump 切換至 STANDBY 模式",
+      "sop_doc": "SOP_Vent_003",
+      "step_number": 2
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "OpenVentValve",
+      "description": "緩慢打開洩壓閥引入 N₂ 置換腔體殘氣",
+      "sop_doc": "SOP_Vent_003",
+      "step_number": 3
+    }
+  },
+  {
+    "label": "SOPStep",
+    "properties": {
+      "id": "ConfirmAtmPressure",
+      "description": "確認腔體壓力達到大氣壓並穩定",
+      "sop_doc": "SOP_Vent_003",
+      "step_number": 4
+    }
+  },
+  {
+    "label": "ProcessCondition",
+    "properties": {
+      "id": "EtchGasFlow_Cl2",
+      "parameter": "Cl2_flow_sccm",
+      "target": 50,
+      "tolerance": 5,
+      "unit": "sccm"
+    }
+  },
+  {
+    "label": "ProcessCondition",
+    "properties": {
+      "id": "EtchGasFlow_HBr",
+      "parameter": "HBr_flow_sccm",
+      "target": 20,
+      "tolerance": 3,
+      "unit": "sccm"
+    }
+  },
+  {
+    "label": "ProcessCondition",
+    "properties": {
+      "id": "ChamberLeakRate",
+      "parameter": "leak_rate_mTorr_per_min",
+      "max_allowed": 0.1,
+      "unit": "mTorr/min"
+    }
+  },
+  {
+    "label": "ProcessCondition",
+    "properties": {
+      "id": "AtmosphericPressure",
+      "parameter": "chamber_pressure_Torr",
+      "target": 760,
+      "tolerance": 5,
+      "unit": "Torr"
+    }
+  }
+]
