@@ -495,12 +495,60 @@ SOPDocument ──[CROSS_DOC_DEPENDENCY {reason}]──▶ SOPDocument
 
 > 全部為**教學範例資料**，不代表任何真實製造商的操作規範。
 
-**新增自己的 SOP 文件：**
+### 新增自己的 SOP 文件（自動抽取）
 
-1. 將 Markdown 檔放入 `data/sop_docs/`
-2. 在 `data/graph_seed/nodes.json` 新增對應節點
-3. 在 `data/graph_seed/edges.json` 新增對應關係
-4. 重新執行 `docker compose run --rm api python scripts/ingest_all.py`（idempotent，不會重複寫入）
+手動維護 `nodes.json` / `edges.json` 在 SOP 數量多時不可行。
+使用 `extract_graph_from_sop.py` 讓 LLM 自動從 Markdown 抽取圖譜：
+
+```
+SOP Markdown 文件
+      │
+      ▼
+scripts/extract_graph_from_sop.py   ← LLM 兩次 pass（nodes → edges）
+      │
+      ├─ Pass 1：抽取節點（SOPDocument / SOPStep / Equipment / Anomaly / ProcessCondition）
+      └─ Pass 2：抽取邊（TRIGGERS_SOP / FIRST_STEP / NEXT_STEP / REQUIRES_STATUS / …）
+      │
+      ▼
+data/graph_seed/nodes_extracted.json
+data/graph_seed/edges_extracted.json
+      │
+      ▼（人工 review 後執行 --merge）
+data/graph_seed/nodes.json  ←  merge（dedup by id）
+data/graph_seed/edges.json  ←  merge（dedup by type+from+to）
+      │
+      ▼
+scripts/ingest_graph.py  →  Neo4j
+```
+
+**操作步驟：**
+
+```bash
+# 步驟 1：將新 SOP 放入 data/sop_docs/
+cp my_new_sop.md data/sop_docs/
+
+# 步驟 2：LLM 自動抽取（需要 vLLM 服務運行中）
+docker compose run --rm api python scripts/extract_graph_from_sop.py
+
+# 步驟 3：Review 抽取結果（確認節點/邊正確）
+cat data/graph_seed/nodes_extracted.json
+cat data/graph_seed/edges_extracted.json
+
+# 步驟 4：確認無誤後合併進 graph seed
+docker compose run --rm api python scripts/extract_graph_from_sop.py --merge
+
+# 步驟 5：重新 ingest（idempotent，不會重複寫入）
+docker compose run --rm api python scripts/ingest_all.py
+```
+
+**可用 flags：**
+
+| Flag | 說明 |
+|------|------|
+| `--file <path>` | 只處理單一檔案 |
+| `--dry-run` | 印出抽取結果，不寫檔案（preview 用） |
+| `--merge` | 直接合併進 `nodes.json` / `edges.json` |
+| `--output-dir <dir>` | 指定輸出目錄（預設 `data/graph_seed/`） |
 
 ---
 
@@ -756,10 +804,11 @@ fab-sop-rag/
 │   ├── config.py              # pydantic-settings（.env 驅動）
 │   └── schemas.py             # Pydantic 資料模型
 ├── scripts/
-│   ├── ingest_graph.py        # 寫入 Neo4j
-│   ├── ingest_vector.py       # 寫入 Chroma
-│   ├── ingest_all.py          # 一次跑完
-│   └── eval_compare.py        # Baseline vs Graph RAG 評測（--mock 離線可用）
+│   ├── extract_graph_from_sop.py  # SOP Markdown → nodes/edges JSON（LLM 自動抽取）
+│   ├── ingest_graph.py            # nodes/edges JSON → Neo4j
+│   ├── ingest_vector.py           # SOP Markdown → Chroma
+│   ├── ingest_all.py              # ingest_graph + ingest_vector 一次跑完
+│   └── eval_compare.py            # Baseline vs Graph RAG 評測（--mock 離線可用）
 ├── data/
 │   ├── sop_docs/              # 原始 SOP Markdown
 │   ├── graph_seed/            # 節點 + 邊 JSON
