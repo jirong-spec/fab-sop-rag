@@ -736,7 +736,62 @@ API 仍可啟動，但：
 
 ---
 
-## 十二、Baseline RAG vs Graph RAG 評估結果
+## 十二、併發壓力測試
+
+### 測試環境
+
+| 硬體 | 規格 |
+|------|------|
+| CPU | AMD Ryzen 7 3700X（8 核 16 線程） |
+| RAM | 16 GB |
+| GPU | NVIDIA GeForce RTX 3060 12 GB VRAM |
+| LLM | Qwen2.5-3B-Instruct（vLLM v0.6.3，`gpu_memory_utilization=0.8`） |
+| OS | Linux（Driver 550.163） |
+
+### 測試方式
+
+使用 Python `asyncio` + `httpx` 同時送出 N 個 POST `/v1/ask` 請求，問題固定為「蝕刻站發生壓力異常時應執行哪份SOP」（Graph RAG pipeline，`enable_guards=false`）。
+
+### 結果
+
+```
+N（並發數）│   成功 │  Wall ms │  Avg ms │  Max ms │  備註
+──────────────────────────────────────────────────────────
+         1 │      1 │     1176 │    1176 │    1176 │  baseline
+         2 │      2 │     1645 │    1645 │    1645 │  幾乎同時完成
+         4 │      4 │     2450 │    2449 │    2450 │  ✅ 正常
+         8 │      8 │     4020 │    4018 │    4020 │  ✅ 可接受
+        16 │     16 │     7170 │    7162 │    7168 │  ⚠️ 開始排隊
+        32 │     32 │    14336 │   10863 │   14333 │  ⚠️ 接近 timeout
+```
+
+### 分析
+
+- **FastAPI 層不是瓶頸**：`/v1/ask` 使用 `asyncio.to_thread()` 將同步 pipeline 丟進 thread pool，event loop 保持非阻塞，多請求可真正並發執行。
+- **瓶頸在 vLLM GPU KV cache**：RTX 3060 12 GB 上跑 Qwen2.5-3B，有效並發約 **8–16 個請求**在合理延遲（< 5s）內。
+- **延遲線性成長**：每多一倍並發，延遲約多 1.5–2x，符合 vLLM 的批次推論佇列行為。
+
+### 適用場景
+
+| 場景 | 建議並發 | 延遲 | 結論 |
+|------|---------|------|------|
+| 單人 demo / PoC | 1–2 | ~1.2–1.6 s | ✅ |
+| 小組內部工具（5–10 人） | 4–8 | ~2.4–4 s | ✅ 可接受 |
+| 部門系統（~20 人） | 16 | ~7 s | ⚠️ 需換更大 GPU |
+| 高併發生產環境 | 32+ | 14 s+ | ❌ 需多 GPU 或多實例 + LB |
+
+### 進一步擴展方向
+
+若需支援更高併發，建議依序：
+
+1. **多 uvicorn worker**：`uvicorn app.main:app --workers 4`（利用多核 CPU）
+2. **更大 GPU**：RTX 4090 24 GB 或 A100 40 GB，KV cache 容量倍增
+3. **vLLM tensor parallelism**：多張 GPU 水平切割模型（`--tensor-parallel-size 2`）
+4. **多實例 + load balancer**：多台機器各跑一套 stack，前端加 Nginx 做 round-robin
+
+---
+
+## 十三、Baseline RAG vs Graph RAG 評估結果
 
 ### 評估方法
 
@@ -823,7 +878,7 @@ Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 
 ---
 
-## 十三、架構說明
+## 十四、架構說明
 
 ```
 fab-sop-rag/
