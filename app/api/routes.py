@@ -171,7 +171,7 @@ async def ask(
 ) -> JSONResponse:
     req_id = get_request_id()
     logger.info("POST /v1/ask | question=%r", req.question[:80])
-    result: AskResponse = run_pipeline(req)
+    result: AskResponse = await asyncio.to_thread(run_pipeline, req)
     result.request_id = req_id
     return JSONResponse(
         content=result.model_dump(by_alias=True, exclude_none=True)
