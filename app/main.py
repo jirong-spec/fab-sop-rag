@@ -17,10 +17,25 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Fab SOP Knowledge Query API starting up (version 1.0.0)")
-    # Services use @lru_cache and connect lazily on first request.
-    # Uncomment to pre-warm on startup:
-    #   from app.services.vector_store import _get_vector_store; _get_vector_store()
-    #   from app.services.graph_store import _get_driver; _get_driver()
+    # Pre-warm all heavy resources so the first real request has normal latency.
+    try:
+        from app.services.vector_store import _get_vector_store
+        _get_vector_store()
+        logger.info("Warm-up: embedding model + Chroma loaded")
+    except Exception as e:
+        logger.warning("Warm-up vector store failed (non-fatal): %s", e)
+    try:
+        from app.services.graph_store import _get_driver
+        _get_driver()
+        logger.info("Warm-up: Neo4j driver connected")
+    except Exception as e:
+        logger.warning("Warm-up Neo4j failed (non-fatal): %s", e)
+    try:
+        from app.services.llm_client import chat_completion
+        chat_completion("ping", max_tokens=1)
+        logger.info("Warm-up: LLM endpoint reachable")
+    except Exception as e:
+        logger.warning("Warm-up LLM failed (non-fatal): %s", e)
     yield
     logger.info("Fab SOP Knowledge Query API shutting down")
 

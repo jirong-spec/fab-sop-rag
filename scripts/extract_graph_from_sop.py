@@ -133,15 +133,15 @@ ProcessCondition — 製程條件或參數規格
 5. 回傳純 JSON，不要有任何說明文字或 markdown 格式
 
 【輸出格式】
-{
+{{
   "nodes": [
-    {"label": "SOPDocument", "properties": {"id": "SOP_Etch_001", "title": "蝕刻站壓力異常處置程序", "version": "Rev. 2.1", "equipment": "EtchStation"}},
-    {"label": "SOPStep", "properties": {"id": "CheckVacuumPump", "description": "確認真空泵浦運作狀態", "sop_doc": "SOP_Etch_001", "step_number": 1}},
-    {"label": "Equipment", "properties": {"id": "TurboVacuumPump", "type": "VacuumPump", "description": "渦輪分子泵浦"}},
-    {"label": "Anomaly", "properties": {"id": "PressureAnomaly", "description": "腔體壓力超出允許範圍", "threshold_high_mTorr": 5.0}},
-    {"label": "ProcessCondition", "properties": {"id": "EtchGasFlow_Cl2", "parameter": "Cl2_flow_sccm", "target": 50, "tolerance": 5, "unit": "sccm"}}
+    {{"label": "SOPDocument", "properties": {{"id": "SOP_Etch_001", "title": "蝕刻站壓力異常處置程序", "version": "Rev. 2.1", "equipment": "EtchStation"}}}},
+    {{"label": "SOPStep", "properties": {{"id": "CheckVacuumPump", "description": "確認真空泵浦運作狀態", "sop_doc": "SOP_Etch_001", "step_number": 1}}}},
+    {{"label": "Equipment", "properties": {{"id": "TurboVacuumPump", "type": "VacuumPump", "description": "渦輪分子泵浦"}}}},
+    {{"label": "Anomaly", "properties": {{"id": "PressureAnomaly", "description": "腔體壓力超出允許範圍", "threshold_high_mTorr": 5.0}}}},
+    {{"label": "ProcessCondition", "properties": {{"id": "EtchGasFlow_Cl2", "parameter": "Cl2_flow_sccm", "target": 50, "tolerance": 5, "unit": "sccm"}}}}
   ]
-}
+}}
 
 【SOP 文件內容】
 {content}"""
@@ -199,14 +199,14 @@ CROSS_DOC_DEPENDENCY  SOPDocument → SOPDocument
 5. 回傳純 JSON，不要有任何說明文字或 markdown 格式
 
 【輸出格式】
-{
+{{
   "edges": [
-    {"type": "TRIGGERS_SOP", "from_label": "Anomaly", "from_id": "PressureAnomaly", "to_label": "SOPDocument", "to_id": "SOP_Etch_001", "properties": {}},
-    {"type": "FIRST_STEP", "from_label": "SOPDocument", "from_id": "SOP_Etch_001", "to_label": "SOPStep", "to_id": "CheckVacuumPump", "properties": {}},
-    {"type": "NEXT_STEP", "from_label": "SOPStep", "from_id": "CheckVacuumPump", "to_label": "SOPStep", "to_id": "VerifyGasFlow", "properties": {}},
-    {"type": "REQUIRES_STATUS", "from_label": "SOPStep", "from_id": "CheckVacuumPump", "to_label": "Equipment", "to_id": "TurboVacuumPump", "properties": {"required_status": "RUNNING"}}
+    {{"type": "TRIGGERS_SOP", "from_label": "Anomaly", "from_id": "PressureAnomaly", "to_label": "SOPDocument", "to_id": "SOP_Etch_001", "properties": {{}}}},
+    {{"type": "FIRST_STEP", "from_label": "SOPDocument", "from_id": "SOP_Etch_001", "to_label": "SOPStep", "to_id": "CheckVacuumPump", "properties": {{}}}},
+    {{"type": "NEXT_STEP", "from_label": "SOPStep", "from_id": "CheckVacuumPump", "to_label": "SOPStep", "to_id": "VerifyGasFlow", "properties": {{}}}},
+    {{"type": "REQUIRES_STATUS", "from_label": "SOPStep", "from_id": "CheckVacuumPump", "to_label": "Equipment", "to_id": "TurboVacuumPump", "properties": {{"required_status": "RUNNING"}}}}
   ]
-}
+}}
 
 【SOP 文件內容】
 {content}"""
