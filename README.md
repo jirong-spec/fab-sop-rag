@@ -550,6 +550,40 @@ docker compose run --rm api python scripts/ingest_all.py
 | `--merge` | 直接合併進 `nodes.json` / `edges.json` |
 | `--output-dir <dir>` | 指定輸出目錄（預設 `data/graph_seed/`） |
 
+### LLM 自動抽取的能力與限制
+
+本系統以 3 份 SOP Markdown 實測，結果如下：
+
+| | 手工標注（ground truth） | LLM 自動抽取（Qwen2.5-3B） |
+|--|--|--|
+| Nodes | 29 | 24（覆蓋率 ~83%） |
+| Edges | 48 | 26（覆蓋率 ~54%） |
+
+**已驗證可靠的部分：**
+- SOPDocument / SOPStep 節點幾乎全抓到
+- `TRIGGERS_SOP`、`FIRST_STEP`、`NEXT_STEP`、`REQUIRES_STATUS` 主要關係正確
+
+**常見遺漏：**
+- 細粒度 ProcessCondition 節點（如 `EtchGasFlow_HBr`、`ChamberLeakRate`）
+- `PRECONDITION`、`INTERLOCK_WITH`、`CROSS_DOC_DEPENDENCY` 等跨文件關係
+- 節點 ID 命名與原文稍有出入時，衍生 edge 因 validate_edges 檢查而被丟棄
+
+**建議工作流程（Human-in-the-loop）：**
+
+```
+LLM 自動抽取（--dry-run preview）
+        ↓
+工程師 review nodes_extracted.json / edges_extracted.json
+  → 補漏節點、修正 ID 命名、加入跨文件 edge
+        ↓
+--merge 合併進 graph seed
+        ↓
+docker compose exec api python scripts/ingest_graph.py
+```
+
+LLM 抽取做 **first-pass**，降低人工建圖門檻（估計節省 ~60% 手工時間）；
+工程師只需 **review 與補漏**，而非從零撰寫 JSON。
+
 ---
 
 ## 九、服務端點總覽
