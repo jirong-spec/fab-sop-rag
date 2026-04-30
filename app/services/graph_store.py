@@ -18,6 +18,13 @@ def _get_driver() -> Driver:
     )
 
 
+def _node_label(node) -> str:
+    """Return 'id[title]' when a title property exists, otherwise just 'id'."""
+    node_id = node.get("id", "")
+    title = node.get("title", "")
+    return f"{node_id}[{title}]" if title else node_id
+
+
 def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     """
     Expand from seed entities via graph traversal up to `hop` hops.
@@ -50,8 +57,8 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
         for record in records:
             path = record["p"]
             for rel in path.relationships:
-                start_name = rel.start_node.get("id", "")
-                end_name = rel.end_node.get("id", "")
+                start_name = _node_label(rel.start_node)
+                end_name = _node_label(rel.end_node)
                 if not start_name or not end_name:
                     continue
                 # Include edge properties (e.g. required_status, reason) so the

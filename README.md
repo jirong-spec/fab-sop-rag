@@ -724,18 +724,18 @@ API 仍可啟動，但：
 ```
 ID   │ 類別                        │ Graph RAG            │ Baseline RAG         │  Graph  │  Base
 ─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
-q01  │ anomaly_handling            │ ⚠️  1/2  (50%)        │ ✅ 2/2 (100%)        │ 15611ms │  1660ms
-q02  │ sop_step_sequence  [↑HOP]   │ ✅ 6/6 (100%)        │ ❌ 0/6  (0%)         │  2437ms │   454ms
-q03  │ equipment_precondition      │ ✅ 5/5 (100%)        │ ✅ 5/5 (100%)        │  2462ms │  1257ms
-q04  │ step_dependency             │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  2455ms │  1802ms
-q05  │ cross_doc_dependency [↑HOP] │ ✅ 3/3 (100%)        │ ⚠️  2/3  (67%)        │  2005ms │  1062ms
-q06  │ interlock_condition         │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  2325ms │  3144ms
-q07  │ vent_procedure      [↑HOP]  │ ✅ 4/4 (100%)        │ ⚠️  1/4  (25%)        │  2947ms │   435ms
-q08  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   575ms │   575ms
-q09  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   595ms │   596ms
-q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)         │  2455ms │  1371ms
+q01  │ anomaly_handling            │ ✅ 2/2 (100%)        │ ✅ 2/2 (100%)        │ 16117ms │  1665ms
+q02  │ sop_step_sequence  [↑HOP]   │ ✅ 6/6 (100%)        │ ❌ 0/6  (0%)         │  2568ms │   456ms
+q03  │ equipment_precondition      │ ✅ 5/5 (100%)        │ ✅ 5/5 (100%)        │  2279ms │  1255ms
+q04  │ step_dependency             │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  3402ms │  1805ms
+q05  │ cross_doc_dependency [↑HOP] │ ✅ 3/3 (100%)        │ ⚠️  2/3  (67%)        │  3778ms │  1063ms
+q06  │ interlock_condition         │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  2425ms │  3156ms
+q07  │ vent_procedure      [↑HOP]  │ ✅ 4/4 (100%)        │ ⚠️  1/4  (25%)        │  3450ms │   437ms
+q08  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   576ms │   576ms
+q09  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   597ms │   597ms
+q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)         │  2553ms │  1376ms
 ─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
-     │ TOTALS                      │ 31/32 (96.9%)        │ 18/32 (56.2%)        │ avg 3386ms │ avg 1235ms
+     │ TOTALS                      │ 32/32 (100.0%)       │ 18/32 (56.2%)        │ avg 3774ms │ avg 1238ms
 ```
 
 `[↑HOP]` 標記的題目需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）。
@@ -744,16 +744,16 @@ q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)
 
 | 指標 | Graph RAG | Baseline RAG | 差距 |
 |------|-----------|--------------|------|
-| **整體關鍵字命中率** | **96.9%** (31/32) | 56.2% (18/32) | +40.7 pp |
+| **整體關鍵字命中率** | **100.0%** (32/32) | 56.2% (18/32) | +43.8 pp |
 | **多跳查詢命中率** | **100.0%** (13/13) | 23.1% (3/13) | **+76.9 pp** |
 | **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 3386 ms | 1235 ms | +2151 ms |
+| **平均端對端延遲** | 3774 ms | 1238 ms | +2536 ms |
 
 > 以上數字為 Live 實測（Neo4j + vLLM Qwen2.5-3B + Chroma 全服務啟動，2026-04-30）。
 
 **結論：**
 
-- 單跳查詢（直接事實查詢）兩者準確度相當；Graph RAG 多約 +2 秒圖譜遍歷開銷（使用本地 3B 小模型）。
+- 單跳查詢（直接事實查詢）兩者準確度相當；Graph RAG 多約 +2.5 秒圖譜遍歷開銷（使用本地 3B 小模型）。
 - **多跳查詢（NEXT_STEP 步驟鏈、CROSS_DOC_DEPENDENCY、DEPENDS_ON 鏈）是 Graph RAG 的核心優勢**，命中率高出 +76.9 個百分點。Baseline RAG 在沒有顯式圖關係的情況下只能靠文本相似度，容易遺漏跨文件的依賴關係與完整的步驟序列。
 - 兩條 pipeline 的 guardrail 行為完全一致，topic guard 與 injection guard 均正確攔截非 SOP 問題。
 
