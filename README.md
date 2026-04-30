@@ -136,7 +136,9 @@ python:3.12-slim
     ├── pip install -r requirements.txt   ← layer cache（先裝依賴）
     ├── COPY app/  scripts/  data/
     └── CMD: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
-              （single worker — lru_cache singleton 非 fork-safe）
+              （single worker — 瓶頸是 vLLM GPU，多 worker 不增加吞吐量
+                但會讓每個 worker 各自載 embedding model，浪費 RAM；
+                並發靠 asyncio.to_thread 在 thread pool 處理即可）
 ```
 
 ---
