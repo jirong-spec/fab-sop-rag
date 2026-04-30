@@ -719,23 +719,23 @@ API 仍可啟動，但：
 - **正確攔截率**：非 SOP 問題是否被 Guard 2 正確 `blocked`
 - **端對端延遲**：整條 pipeline 耗時
 
-### 逐題比較
+### 逐題比較（Live 實測，2026-04-30）
 
 ```
-ID   │ 類別                        │ Graph RAG           │ Baseline RAG        │ Graph  │ Base
-─────┼─────────────────────────────┼─────────────────────┼─────────────────────┼────────┼───────
-q01  │ anomaly_handling            │ ✅ 2/2 (100%)       │ ✅ 2/2 (100%)       │  231ms │  143ms
-q02  │ sop_step_sequence  [↑HOP]   │ ✅ 6/6 (100%)       │ ⚠️  2/6  (33%)       │  318ms │  162ms
-q03  │ equipment_precondition      │ ✅ 5/5 (100%)       │ ✅ 5/5 (100%)       │  244ms │  155ms
-q04  │ step_dependency             │ ✅ 4/4 (100%)       │ ✅ 4/4 (100%)       │  198ms │  138ms
-q05  │ cross_doc_dependency [↑HOP] │ ✅ 3/3 (100%)       │ ⚠️  2/3  (67%)       │  341ms │  149ms
-q06  │ interlock_condition         │ ✅ 4/4 (100%)       │ ⚠️  2/4  (50%)       │  267ms │  152ms
-q07  │ vent_procedure      [↑HOP]  │ ✅ 4/4 (100%)       │ ⚠️  1/4  (25%)       │  356ms │  157ms
-q08  │ off_topic_blocked           │ ✅ blocked          │ ✅ blocked          │   89ms │   87ms
-q09  │ off_topic_blocked           │ ✅ blocked          │ ✅ blocked          │   91ms │   88ms
-q10  │ pump_check_sequence         │ ✅ 4/4 (100%)       │ ✅ 4/4 (100%)       │  287ms │  161ms
-─────┼─────────────────────────────┼─────────────────────┼─────────────────────┼────────┼───────
-     │ TOTALS                      │ 32/32 (100.0%)      │ 22/32 ( 68.8%)      │ avg 242ms │ avg 139ms
+ID   │ 類別                        │ Graph RAG            │ Baseline RAG         │  Graph  │  Base
+─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
+q01  │ anomaly_handling            │ ⚠️  1/2  (50%)        │ ✅ 2/2 (100%)        │ 15611ms │  1660ms
+q02  │ sop_step_sequence  [↑HOP]   │ ✅ 6/6 (100%)        │ ❌ 0/6  (0%)         │  2437ms │   454ms
+q03  │ equipment_precondition      │ ✅ 5/5 (100%)        │ ✅ 5/5 (100%)        │  2462ms │  1257ms
+q04  │ step_dependency             │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  2455ms │  1802ms
+q05  │ cross_doc_dependency [↑HOP] │ ✅ 3/3 (100%)        │ ⚠️  2/3  (67%)        │  2005ms │  1062ms
+q06  │ interlock_condition         │ ✅ 4/4 (100%)        │ ✅ 4/4 (100%)        │  2325ms │  3144ms
+q07  │ vent_procedure      [↑HOP]  │ ✅ 4/4 (100%)        │ ⚠️  1/4  (25%)        │  2947ms │   435ms
+q08  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   575ms │   575ms
+q09  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   595ms │   596ms
+q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)         │  2455ms │  1371ms
+─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
+     │ TOTALS                      │ 31/32 (96.9%)        │ 18/32 (56.2%)        │ avg 3386ms │ avg 1235ms
 ```
 
 `[↑HOP]` 標記的題目需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）。
@@ -744,15 +744,17 @@ q10  │ pump_check_sequence         │ ✅ 4/4 (100%)       │ ✅ 4/4 (100%)
 
 | 指標 | Graph RAG | Baseline RAG | 差距 |
 |------|-----------|--------------|------|
-| **整體關鍵字命中率** | **100.0%** (32/32) | 68.8% (22/32) | +31.2 pp |
-| **多跳查詢命中率** | **100.0%** (13/13) | 38.5% (5/13) | **+61.5 pp** |
+| **整體關鍵字命中率** | **96.9%** (31/32) | 56.2% (18/32) | +40.7 pp |
+| **多跳查詢命中率** | **100.0%** (13/13) | 23.1% (3/13) | **+76.9 pp** |
 | **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 242 ms | 139 ms | +103 ms |
+| **平均端對端延遲** | 3386 ms | 1235 ms | +2151 ms |
+
+> 以上數字為 Live 實測（Neo4j + vLLM Qwen2.5-3B + Chroma 全服務啟動，2026-04-30）。
 
 **結論：**
 
-- 單跳查詢（直接事實查詢）兩者準確度相當；Graph RAG 僅多 ~100 ms 圖譜遍歷開銷。
-- **多跳查詢（NEXT_STEP 步驟鏈、CROSS_DOC_DEPENDENCY、DEPENDS_ON 鏈）是 Graph RAG 的核心優勢**，命中率高出 +61.5 個百分點。Baseline RAG 在沒有顯式圖關係的情況下只能靠文本相似度，容易遺漏跨文件的依賴關係與完整的步驟序列。
+- 單跳查詢（直接事實查詢）兩者準確度相當；Graph RAG 多約 +2 秒圖譜遍歷開銷（使用本地 3B 小模型）。
+- **多跳查詢（NEXT_STEP 步驟鏈、CROSS_DOC_DEPENDENCY、DEPENDS_ON 鏈）是 Graph RAG 的核心優勢**，命中率高出 +76.9 個百分點。Baseline RAG 在沒有顯式圖關係的情況下只能靠文本相似度，容易遺漏跨文件的依賴關係與完整的步驟序列。
 - 兩條 pipeline 的 guardrail 行為完全一致，topic guard 與 injection guard 均正確攔截非 SOP 問題。
 
 ### Citation Traceability
@@ -783,7 +785,7 @@ python3 scripts/eval_compare.py --mock --output data/eval_results/latest.json
 docker compose run --rm api python scripts/eval_compare.py
 ```
 
-結果存放於 `data/eval_results/mock_baseline_vs_graph.json`。
+Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 
 ---
 
