@@ -126,7 +126,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "answered_with_warning",
-        "latency_ms": 15853,
+        "latency_ms": 2820,
         "answer": "蝕刻站發生壓力異常（PressureAnomaly）時，應該執行的 SOP 文件為：\n\n- SOP_Etch_001[蝕刻站壓力異常處置程序]",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -197,7 +197,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 1662,
+        "latency_ms": 1667,
         "answer": "蝕刻站發生壓力異常（PressureAnomaly）時，應該執行 **SOP_Etch_001 — 蝕刻站壓力異常處置程序**。",
         "evidence_triples": [
           "進行安全確認，不得手動干預自動洩壓序列。\n\n---\n\n## 5. 相關文件\n\n- SOP_Etch_001：蝕刻站壓力異常處置程序（步驟 3 引用本文件）\n- SOP_Pump_002：真空泵浦狀態檢查程序（TurboVacuumPump 狀態定義）\n- SOP_Vent_003 定義於文件庫 FabSOP_Library\n",
@@ -212,7 +212,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "graph_rag",
-        "latency_ms": 2560,
+        "latency_ms": 2564,
         "answer": "- SOP_Etch_001 的第一個步驟是：CheckVacuumPump\n- 接下來的步驟順序為：\n  1. VerifyGasFlow\n  2. InspectChamberLeak\n  3. RestoreProcessCondition",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -285,7 +285,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 454,
+        "latency_ms": 456,
         "answer": "查詢結果：無足夠資訊回答此問題。",
         "evidence_triples": [
           "# SOP_Vent_003 — 腔體洩壓程序\n\n> **文件類型：範例資料（Sample Data）**  \n> 本文件為教學用途之虛構 SOP，不代表任何真實廠商之操作規範。\n\n---\n\n## 文件資訊\n\n| 欄位 | 內容 |\n|------|------|\n| 文件編號 | SOP_Vent_003 |\n| 文件名稱 | 腔體洩壓程序 |\n| 適用設備 | EtchStation, VentValve, N2PurgeSystem |\n| 版本 | Rev. 3.0 |\n| 適用情境 | 計劃維護洩壓 / 緊急聯鎖洩壓 |\n\n---\n\n## 1. 適用範圍\n\n本程序定義 EtchStation 腔體之標準洩壓（Vent）操作步驟，適用於：\n- 計劃性維護前的腔體開啟準備\n- 壓力 Interlock（IL-E003）觸發後的緊急洩壓\n- 腔體洩漏率超標後的安全排氣\n\n---\n\n##",
@@ -300,7 +300,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "graph_rag",
-        "latency_ms": 2276,
+        "latency_ms": 2277,
         "answer": "執行 SOP_Etch_001 之前，TurboVacuumPump 和 RFPowerSupply 需要的狀態如下：\n\n- TurboVacuumPump：RUNNING\n- RFPowerSupply：OFF",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -363,7 +363,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 1255,
+        "latency_ms": 1257,
         "answer": "執行 SOP_Etch_001 之前，TurboVacuumPump 需要切換至 STANDBY 模式，而 RFPowerSupply 需要處於 OFF 狀態。",
         "evidence_triples": [
           "）\n\n---\n\n## 3. 洩壓步驟\n\n### 步驟 1：IsolateRFAndGas（第一步驟）\n\n確認所有高風險能源已隔離。\n\n- 確認 RFPowerSupply 開關位於 OFF 並上鎖（LOTO 程序）\n- 關閉所有氣體供應管線上的手動截止閥\n- 確認 EtchStation 操作介面顯示「Process Stopped」\n\n**依賴關係：**\n- IsolateRFAndGas REQUIRES_STATUS RFPowerSupply.OFF\n- IsolateRFAndGas REQUIRES_STATUS GasSupplyValves.CLOSED\n\n---\n\n### 步驟 2：SwitchPumpToStandby（下一步驟）\n\n將 TurboVacuumPump 切換至 STANDBY 模式。\n\n- 在 PumpControlPanel 點擊「Standby」\n-",
@@ -378,7 +378,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "graph_rag",
-        "latency_ms": 3398,
+        "latency_ms": 3401,
         "answer": "依据圖譜，CheckVacuumPump 步驟執行前必須完成的前一個步驟（NEXT_STEP）是 VerifyGasFlow。VerifyGasFlow 步驟的狀態要求為：REQUIRES_STATUS {required_status: 'RUNNING'}. 因此，CheckVacuumPump 步驟需要 TurboVacuumPump 处於 RUNNING 狀態。",
         "evidence_triples": [
           "(CheckVacuumPump)-[:REQUIRES_STATUS {required_status: 'RUNNING'}]->(TurboVacuumPump)",
@@ -426,7 +426,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 1803,
+        "latency_ms": 1805,
         "answer": "CheckVacuumPump 步驟需要 TurboVacuumPump 狀態為 RUNNING。此資訊來自以下片段：\n\n**依賴關係：** CheckVacuumPump REQUIRES_STATUS TurboVacuumPump.RUNNING",
         "evidence_triples": [
           "ation 操作介面並取得 Level-2 權限\n\n---\n\n## 3. 異常排查步驟\n\n### 步驟 1：CheckVacuumPump（第一步驟）\n\n確認真空泵浦（TurboVacuumPump）運作狀態。\n\n- 查看泵浦狀態指示燈：綠色 = 正常，黃色 = 警告，紅色 = 故障\n- 確認泵浦轉速 ≥ 90% 額定轉速\n- 如泵浦狀態異常，執行 `VacuumPump_Check` 子程序後返回本步驟\n\n**依賴關係：** CheckVacuumPump REQUIRES_STATUS TurboVacuumPump.RUNNING\n\n---\n\n### 步驟 2：VerifyGasFlow（下一步驟）\n\n確認製程氣體流量是否在正常範圍。\n\n- 檢查 MFC（Mass Flow Controller）讀值：\n  - Cl₂：50 ± 5 sccm\n  - HBr：20 ± 3 sccm\n",
@@ -441,7 +441,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "answered_with_warning",
-        "latency_ms": 3780,
+        "latency_ms": 3782,
         "answer": "依據圖譜，SOP_Etch_001 定義了 TurboVacuumPump 的狀態，具體說明如下：\n\n- SOP_Etch_001 [蝕刻站壓力異常處置程序] -[:CROSS_DOC_DEPENDENCY {reason: 'TurboVacuumPump 狀態定義（RUNNING/FAULT 等）源自 SOP_Pump_002 第 4 節'}]-> (SOP_Pump_002 [真空泵浦狀態檢查程序])",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -512,7 +512,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 1064,
+        "latency_ms": 1065,
         "answer": "SOP_Etch_001 中 TurboVacuumPump 的狀態定義是在本文件（SOP_Pump_002）第 4 節。",
         "evidence_triples": [
           "# SOP_Pump_002 — 真空泵浦狀態檢查程序\n\n> **文件類型：範例資料（Sample Data）**  \n> 本文件為教學用途之虛構 SOP，不代表任何真實廠商之操作規範。\n\n---\n\n## 文件資訊\n\n| 欄位 | 內容 |\n|------|------|\n| 文件編號 | SOP_Pump_002 |\n| 文件名稱 | 真空泵浦狀態檢查程序 |\n| 適用設備 | TurboVacuumPump, DryPump |\n| 版本 | Rev. 1.4 |\n| 異常類型 | PumpDegradation |\n\n---\n\n## 1. 適用範圍\n\n本程序適用於 TurboVacuumPump（渦輪泵浦）與 DryPump（乾式泵浦）之例行狀態確認，\n以及因壓力異常觸發之計劃外檢查。\n\n---\n\n## 2. 前置確認條件（PRECONDITION）\n\n- **[PRECONDITI",
@@ -527,7 +527,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "answered_with_warning",
-        "latency_ms": 2429,
+        "latency_ms": 2425,
         "answer": "查詢結果：此問題不在目前 SOP 圖譜涵蓋範圍。",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -600,7 +600,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 3157,
+        "latency_ms": 3152,
         "answer": "EtchStation 的壓力 Interlock 在 Leak Rate > 0.5 mTorr/min 的條件下觸發。觸發後，系統會自動執行以下動作：\n1. 關閉所有氣體閥\n2. 切斷 RF 電源\n3. 啟動緊急洩壓序列（等同本程序步驟 2 ~ 4，但由系統自動控制）\n\n操作員應立即進行安全確認，不得手動干預自動洩壓序列。",
         "evidence_triples": [
           "件\n\n| Interlock ID | 觸發條件 | 聯鎖動作 |\n|-------------|----------|----------|\n| IL-E001 | 壓力 > 10 mTorr | 自動關閉 RF 電源 |\n| IL-E002 | TurboVacuumPump 轉速 < 80% | 暫停製程並發出警報 |\n| IL-E003 | Leak Rate > 0.5 mTorr/min | 啟動緊急洩壓程序 |\n\n**聯鎖關係：** EtchStation INTERLOCK_WITH PressureInterlock\n\n---\n\n## 5. 相關文件\n\n- SOP_Pump_002：真空泵浦狀態檢查程序\n- SOP_Vent_003：腔體洩壓程序\n- SOP_Etch_001 定義於文件庫 FabSOP_Library\n",
@@ -615,7 +615,7 @@
       "graph": {
         "status": "answered",
         "reasoning_type": "answered_with_warning",
-        "latency_ms": 3456,
+        "latency_ms": 3455,
         "answer": "依據圖譜，執行腔體洩壓程序（SOP_Vent_003）時，OpenVentValve 步驟之前需要先完成以下步驟：\n\n1. IsolateRFAndGas\n2. ReadPumpStatus\n3. CheckBearingVibration\n4. VerifyPumpCooling\n5. LogAndClearAlarm",
         "evidence_triples": [
           "(PressureAnomaly)-[:TRIGGERS_SOP]->(SOP_Etch_001[蝕刻站壓力異常處置程序])",
@@ -686,7 +686,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 436,
+        "latency_ms": 437,
         "answer": "查詢結果：無足夠資訊回答此問題。",
         "evidence_triples": [
           "_Vent_003：腔體洩壓程序\n- SOP_Etch_001 定義於文件庫 FabSOP_Library\n",
@@ -709,7 +709,7 @@
       "baseline": {
         "status": "blocked",
         "reasoning_type": "blocked_off_topic",
-        "latency_ms": 577,
+        "latency_ms": 576,
         "answer": "市場行情，非晶圓廠 SOP 内容",
         "evidence_triples": [],
         "entities": []
@@ -719,7 +719,7 @@
       "graph": {
         "status": "blocked",
         "reasoning_type": "blocked_off_topic",
-        "latency_ms": 597,
+        "latency_ms": 596,
         "answer": "程式設計問題，非晶圓廠 SOP 内容",
         "evidence_triples": [],
         "entities": []
@@ -727,7 +727,7 @@
       "baseline": {
         "status": "blocked",
         "reasoning_type": "blocked_off_topic",
-        "latency_ms": 597,
+        "latency_ms": 596,
         "answer": "程式設計問題，非晶圓廠 SOP 内容",
         "evidence_triples": [],
         "entities": []
@@ -808,7 +808,7 @@
       "baseline": {
         "status": "answered",
         "reasoning_type": "baseline_rag",
-        "latency_ms": 1376,
+        "latency_ms": 1374,
         "answer": "查詢結果：無足夠資訊回答此問題。\n\n文件片段中並未提供SOP_Pump_002的具體步驟順序，僅提供了文件的摘要信息和相關文件引用。因此，無法根據提供的信息回答工程師的問題。",
         "evidence_triples": [
           "# SOP_Pump_002 — 真空泵浦狀態檢查程序\n\n> **文件類型：範例資料（Sample Data）**  \n> 本文件為教學用途之虛構 SOP，不代表任何真實廠商之操作規範。\n\n---\n\n## 文件資訊\n\n| 欄位 | 內容 |\n|------|------|\n| 文件編號 | SOP_Pump_002 |\n| 文件名稱 | 真空泵浦狀態檢查程序 |\n| 適用設備 | TurboVacuumPump, DryPump |\n| 版本 | Rev. 1.4 |\n| 異常類型 | PumpDegradation |\n\n---\n\n## 1. 適用範圍\n\n本程序適用於 TurboVacuumPump（渦輪泵浦）與 DryPump（乾式泵浦）之例行狀態確認，\n以及因壓力異常觸發之計劃外檢查。\n\n---\n\n## 2. 前置確認條件（PRECONDITION）\n\n- **[PRECONDITI",

@@ -309,6 +309,19 @@ def _run_live(queries: list[dict]) -> list[dict]:
     from app.services.pipeline import run_pipeline
     from app.services.baseline_pipeline import run_baseline_pipeline
 
+    # Pre-warm lazy singletons so the first query doesn't absorb cold-start
+    print("[INFO] Pre-warming services (embedding model, Neo4j, LLM)...")
+    try:
+        from app.services.vector_store import _get_vector_store
+        _get_vector_store()
+        from app.services.graph_store import _get_driver
+        _get_driver()
+        from app.services.llm_client import chat_completion
+        chat_completion("ping", max_tokens=1)
+        print("[INFO] Pre-warm complete")
+    except Exception as e:
+        print(f"[WARNING] Pre-warm failed (non-fatal): {e}")
+
     results = []
     for q in queries:
         req = AskRequest(question=q["question"], enable_guards=True, top_k=4, max_hop=2)
