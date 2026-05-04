@@ -46,6 +46,7 @@ import json
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,6 +63,16 @@ logger = logging.getLogger(__name__)
 
 SOP_DOCS_DIR = ROOT / "data" / "sop_docs"
 GRAPH_SEED_DIR = ROOT / "data" / "graph_seed"
+
+# Allowlists — LLM-generated values outside these sets are discarded
+VALID_LABELS = frozenset({
+    "SOPDocument", "SOPStep", "Equipment", "Anomaly", "ProcessCondition",
+})
+VALID_REL_TYPES = frozenset({
+    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
+    "DEFINED_IN", "REQUIRES_STATUS", "PRECONDITION",
+    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY",
+})
 
 
 # ── JSON parsing ──────────────────────────────────────────────────────────────
@@ -254,17 +265,37 @@ def extract_edges(content: str, nodes: list[dict]) -> list[dict]:
 
 
 def validate_edges(edges: list[dict], nodes: list[dict]) -> list[dict]:
-    """Drop edges whose from_id or to_id don't appear in the node list."""
+    """
+    Drop edges that fail any of three checks:
+      1. rel type not in VALID_REL_TYPES  — LLM invented a type
+      2. from_label / to_label not in VALID_LABELS — LLM used wrong label
+      3. from_id / to_id not in extracted node set — dangling reference
+    """
     valid_ids = {n["properties"]["id"] for n in nodes if "id" in n.get("properties", {})}
-    valid, dropped = [], []
+    valid: list[dict] = []
+    dropped_type, dropped_label, dropped_id = [], [], []
+
     for e in edges:
+        rel_type = e.get("type", "")
+        from_label = e.get("from_label", "")
+        to_label = e.get("to_label", "")
         fid, tid = e.get("from_id"), e.get("to_id")
-        if fid in valid_ids and tid in valid_ids:
-            valid.append(e)
+
+        if rel_type not in VALID_REL_TYPES:
+            dropped_type.append(rel_type)
+        elif from_label not in VALID_LABELS or to_label not in VALID_LABELS:
+            dropped_label.append((from_label, to_label))
+        elif fid not in valid_ids or tid not in valid_ids:
+            dropped_id.append((fid, tid))
         else:
-            dropped.append((fid, tid))
-    if dropped:
-        logger.warning("  Dropped %d edges with unknown node IDs: %s", len(dropped), dropped)
+            valid.append(e)
+
+    if dropped_type:
+        logger.warning("  Dropped %d edges with invalid type: %s", len(dropped_type), dropped_type)
+    if dropped_label:
+        logger.warning("  Dropped %d edges with invalid label: %s", len(dropped_label), dropped_label)
+    if dropped_id:
+        logger.warning("  Dropped %d edges with unknown node IDs: %s", len(dropped_id), dropped_id)
     return valid
 
 
@@ -414,16 +445,24 @@ def main() -> None:
 
     logger.info("Files to process: %d", len(files))
 
-    # ── Extract ───────────────────────────────────────────────────────────────
+    # ── Extract (parallel per file) ───────────────────────────────────────────
     all_nodes: list[dict] = []
     all_edges: list[dict] = []
 
-    for f in files:
-        nodes, edges = process_file(f)
-        all_nodes, n_added = merge_nodes(all_nodes, nodes)
-        all_edges, e_added = merge_edges(all_edges, edges)
-        logger.info("  Running total: %d nodes (+%d), %d edges (+%d)",
-                    len(all_nodes), n_added, len(all_edges), e_added)
+    workers = min(len(files), 4)  # cap at 4; vLLM handles batching internally
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(process_file, f): f for f in files}
+        for future in as_completed(futures):
+            f = futures[future]
+            try:
+                nodes, edges = future.result()
+            except Exception as exc:
+                logger.error("process_file(%s) raised: %s", f.name, exc)
+                continue
+            all_nodes, n_added = merge_nodes(all_nodes, nodes)
+            all_edges, e_added = merge_edges(all_edges, edges)
+            logger.info("  [%s] done — running total: %d nodes (+%d), %d edges (+%d)",
+                        f.name, len(all_nodes), n_added, len(all_edges), e_added)
 
     print(f"\n{'='*55}")
     print(f"  Extraction complete")
