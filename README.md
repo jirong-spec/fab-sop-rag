@@ -558,8 +558,8 @@ docker compose run --rm api python scripts/ingest_all.py
 
 | | 手工標注（ground truth） | LLM 自動抽取（Qwen2.5-3B） |
 |--|--|--|
-| Nodes | 29 | 24（覆蓋率 ~83%） |
-| Edges | 48 | 26（覆蓋率 ~54%） |
+| Nodes | 29 | 25（覆蓋率 ~86%） |
+| Edges | 48 | 32（覆蓋率 ~67%） |
 
 **已驗證可靠的部分：**
 - SOPDocument / SOPStep 節點幾乎全抓到
