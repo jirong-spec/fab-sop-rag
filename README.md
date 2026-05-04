@@ -586,6 +586,55 @@ docker compose exec api python scripts/ingest_graph.py
 LLM 抽取做 **first-pass**，降低人工建圖門檻（估計節省 ~60% 手工時間）；
 工程師只需 **review 與補漏**，而非從零撰寫 JSON。
 
+### 抽取品質保障（type/label 白名單驗證）
+
+`extract_graph_from_sop.py` 內建三層 edge 驗證，在寫入前過濾 LLM 輸出中的常見錯誤：
+
+| 驗證層 | 檢查內容 | 常見 LLM 錯誤 |
+|--------|---------|--------------|
+| **type 白名單** | `type` 必須屬於 9 個已知 edge 類型 | LLM 自創 `LINKED_TO`、`PART_OF` 等不存在的 type |
+| **label 白名單** | `from_label` / `to_label` 必須屬於 5 個節點標籤 | LLM 把節點 ID（如 `PressureAnomaly`）誤填到 `from_label` 欄位 |
+| **node ID 存在性** | `from_id` / `to_id` 必須出現在已抽取的節點清單 | 邊引用了不存在的節點（懸空邊） |
+
+被過濾的 edge 會以 WARNING 印出，方便 review。
+
+### 並行處理多份 SOP（~2.6x 加速）
+
+腳本預設使用 `ThreadPoolExecutor` 同時處理多份 SOP 文件（最多 4 個 worker）：
+
+```
+3 份 SOP 文件
+ │
+ ├── Thread 1: etch_pressure_anomaly.md
+ ├── Thread 2: vacuum_pump_check.md
+ └── Thread 3: chamber_vent_procedure.md
+         │
+         ▼（as_completed，哪個先好先 merge）
+    merge_nodes / merge_edges（帶 dedup）
+         │
+         ▼
+nodes_extracted.json / edges_extracted.json
+```
+
+實測（3 份 SOP，Qwen2.5-3B，RTX 3060）：
+
+| 模式 | 耗時 |
+|------|------|
+| 循序（舊版） | ~90 秒 |
+| 並行（4 workers） | ~34 秒 |
+| **加速比** | **~2.6x** |
+
+> SOP 文件數量越多，並行加速效果越明顯（I/O + LLM call 為主要等待時間）。
+
+### 結構邊確定性推導（不依賴 LLM）
+
+`DEFINED_IN`（步驟所屬文件）和 `FIRST_STEP`（SOP 的第一步）兩類 edge 可從節點屬性 100% 確定性推導，不需要 LLM：
+
+- **DEFINED_IN**：所有 `SOPStep` 節點都有 `sop_doc` 屬性，直接生成 `(step) -[DEFINED_IN]-> (sop_doc)` 邊
+- **FIRST_STEP**：`step_number == 1` 的步驟即為 FIRST_STEP，直接生成 `(sop_doc) -[FIRST_STEP]-> (step)` 邊
+
+腳本會自動剔除 LLM 輸出中的這兩類 edge，改用確定性推導，避免 LLM 遺漏或命名不一致。
+
 ---
 
 ## 九、服務端點總覽
