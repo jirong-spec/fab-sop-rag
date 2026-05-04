@@ -268,6 +268,60 @@ def validate_edges(edges: list[dict], nodes: list[dict]) -> list[dict]:
     return valid
 
 
+def derive_structural_edges(nodes: list[dict]) -> list[dict]:
+    """
+    Deterministically generate DEFINED_IN and FIRST_STEP edges from node properties.
+
+    These edges are 100% derivable from what the LLM already extracted —
+    no second-guessing needed. Every SOPStep has sop_doc and step_number;
+    DEFINED_IN and FIRST_STEP follow directly from those values.
+
+    Why not rely on LLM for these?
+    Small models frequently miss or mis-label these structural edges.
+    Deterministic derivation guarantees complete coverage and avoids the
+    validate_edges drop rate that plagues LLM-generated structural edges.
+    """
+    edges = []
+    sop_ids = {
+        n["properties"]["id"]
+        for n in nodes
+        if n["label"] == "SOPDocument" and "id" in n.get("properties", {})
+    }
+
+    for n in nodes:
+        if n["label"] != "SOPStep":
+            continue
+        props = n.get("properties", {})
+        step_id = props.get("id")
+        sop_doc = props.get("sop_doc")
+        step_num = props.get("step_number")
+        if not step_id or not sop_doc or sop_doc not in sop_ids:
+            continue
+
+        # DEFINED_IN — every step belongs to its SOP document
+        edges.append({
+            "type": "DEFINED_IN",
+            "from_label": "SOPStep",
+            "from_id": step_id,
+            "to_label": "SOPDocument",
+            "to_id": sop_doc,
+            "properties": {},
+        })
+
+        # FIRST_STEP — step_number 1 is the entry point of the SOP
+        if step_num == 1:
+            edges.append({
+                "type": "FIRST_STEP",
+                "from_label": "SOPDocument",
+                "from_id": sop_doc,
+                "to_label": "SOPStep",
+                "to_id": step_id,
+                "properties": {},
+            })
+
+    return edges
+
+
 # ── Merge helpers ─────────────────────────────────────────────────────────────
 
 def merge_nodes(existing: list[dict], new: list[dict]) -> tuple[list[dict], int]:
@@ -305,8 +359,19 @@ def process_file(md_path: Path) -> tuple[list[dict], list[dict]]:
     if not nodes:
         logger.warning("  No nodes extracted — skipping edge extraction")
         return [], []
-    edges = extract_edges(content, nodes)
-    edges = validate_edges(edges, nodes)
+
+    # LLM pass for non-structural edges
+    llm_edges = extract_edges(content, nodes)
+    llm_edges = validate_edges(llm_edges, nodes)
+
+    # Remove DEFINED_IN and FIRST_STEP from LLM output — derived deterministically below
+    llm_edges = [e for e in llm_edges if e.get("type") not in {"DEFINED_IN", "FIRST_STEP"}]
+
+    # Deterministic structural edges (100% recall, no hallucination)
+    structural = derive_structural_edges(nodes)
+    logger.info("  Derived %d structural edges (DEFINED_IN + FIRST_STEP)", len(structural))
+
+    edges, _ = merge_edges(structural, llm_edges)
     return nodes, edges
 
 
