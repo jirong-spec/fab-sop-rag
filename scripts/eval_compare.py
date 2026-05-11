@@ -52,18 +52,26 @@ def score_response(resp: dict, expected: dict) -> dict:
             "correct_block": correct,
             "keyword_hits": 0,
             "keyword_total": 0,
+            "retrieval_hits": 0,
+            "retrieval_total": 0,
             "is_block_query": True,
         }
 
-    # Only check the model's generated answer — not evidence_triples or entities.
-    # Including evidence in the haystack inflates accuracy: keywords in retrieved
-    # triples count as "found" even when the model's answer is wrong or missing them.
+    # Retrieval score: keywords found in evidence_triples (did the graph/vector store
+    # fetch the right context?).
+    evidence_text = " ".join(resp.get("evidence_triples", []))
+    retrieval_hits = sum(1 for kw in keywords if kw.lower() in evidence_text.lower())
+
+    # Answer score: keywords found only in the model's generated answer (did the
+    # LLM correctly use the retrieved context?).
     haystack = resp.get("answer", "")
     hits = sum(1 for kw in keywords if kw.lower() in haystack.lower())
     return {
         "correct_block": None,
         "keyword_hits": hits,
         "keyword_total": len(keywords),
+        "retrieval_hits": retrieval_hits,
+        "retrieval_total": len(keywords),
         "is_block_query": False,
     }
 
@@ -366,6 +374,8 @@ def render_report(queries: list[dict], results: dict) -> str:
     rows = []
     g_kw_hits = g_kw_total = 0
     b_kw_hits = b_kw_total = 0
+    g_ret_hits = g_ret_total = 0
+    b_ret_hits = b_ret_total = 0
     g_block_hits = b_block_hits = block_total = 0
     g_latencies = []
     b_latencies = []
@@ -398,26 +408,35 @@ def render_report(queries: list[dict], results: dict) -> str:
             if b_score["correct_block"]:
                 b_block_hits += 1
             rows.append(
-                f"  {qid} │ {cat[:28]:<28}{tag:<7} │ {g_ok} blocked          │ {b_ok} blocked          │ {g_ms:>5}ms │ {b_ms:>5}ms"
+                f"  {qid} │ {cat[:26]:<26}{tag:<7} │ {g_ok} blocked                    │ {b_ok} blocked                    │ {g_ms:>5}ms │ {b_ms:>5}ms"
             )
         else:
             gh, gt = g_score["keyword_hits"], g_score["keyword_total"]
             bh, bt = b_score["keyword_hits"], b_score["keyword_total"]
+            grh = g_score["retrieval_hits"]
+            brh = b_score["retrieval_hits"]
             g_kw_hits += gh
             g_kw_total += gt
             b_kw_hits += bh
             b_kw_total += bt
+            g_ret_hits += grh
+            g_ret_total += gt
+            b_ret_hits += brh
+            b_ret_total += bt
             if is_mh:
                 mh_g_hits += gh
                 mh_g_total += gt
                 mh_b_hits += bh
                 mh_b_total += bt
-            g_pct = f"{gh}/{gt} ({gh/gt*100:.0f}%)" if gt else "N/A"
-            b_pct = f"{bh}/{bt} ({bh/bt*100:.0f}%)" if bt else "N/A"
-            g_ok = "✅" if gh == gt else ("⚠️ " if gh > 0 else "❌")
-            b_ok = "✅" if bh == bt else ("⚠️ " if bh > 0 else "❌")
+            # R = retrieval (evidence_triples), A = answer
+            g_r = "R✅" if grh == gt else ("R⚠" if grh > 0 else "R❌")
+            b_r = "R✅" if brh == bt else ("R⚠" if brh > 0 else "R❌")
+            g_a = "A✅" if gh == gt else ("A⚠" if gh > 0 else "A❌")
+            b_a = "A✅" if bh == bt else ("A⚠" if bh > 0 else "A❌")
+            g_cell = f"{g_r} {g_a} {gh}/{gt}"
+            b_cell = f"{b_r} {b_a} {bh}/{bt}"
             rows.append(
-                f"  {qid} │ {cat[:28]:<28}{tag:<7} │ {g_ok} {g_pct:<16} │ {b_ok} {b_pct:<16} │ {g_ms:>5}ms │ {b_ms:>5}ms"
+                f"  {qid} │ {cat[:26]:<26}{tag:<7} │ {g_cell:<28} │ {b_cell:<28} │ {g_ms:>5}ms │ {b_ms:>5}ms"
             )
 
     g_avg_ms = int(sum(g_latencies) / len(g_latencies)) if g_latencies else 0
@@ -428,17 +447,19 @@ def render_report(queries: list[dict], results: dict) -> str:
     mh_b_pct = mh_b_hits / mh_b_total * 100 if mh_b_total else 0
     mh_delta = mh_g_pct - mh_b_pct
 
-    sep = "  " + "─" * 100
+    sep = "  " + "─" * 106
     header = (
-        "  " + "─" * 100 + "\n"
-        f"  {'ID':<4} │ {'Category + hop tag':<35} │ {'Graph RAG':^20} │ {'Baseline RAG':^20} │ {'Graph':^7} │ {'Base':^7}\n"
-        + "  " + "─" * 100
+        "  " + "─" * 106 + "\n"
+        f"  {'ID':<4} │ {'Category + hop tag':<33} │ {'Graph RAG  (R=retrieval A=answer)':^30} │ {'Baseline RAG':^30} │ {'Graph':^7} │ {'Base':^7}\n"
+        + "  " + "─" * 106
     )
+    g_ret_pct = g_ret_hits / g_ret_total * 100 if g_ret_total else 0
+    b_ret_pct = b_ret_hits / b_ret_total * 100 if b_ret_total else 0
     footer = (
         sep + "\n"
-        f"  {'':4} │ {'TOTALS':35} │ "
-        f"kw {g_kw_hits}/{g_kw_total} ({g_kw_pct:.1f}%)      │ "
-        f"kw {b_kw_hits}/{b_kw_total} ({b_kw_pct:.1f}%)      │ "
+        f"  {'':4} │ {'TOTALS (non-block queries)':<33} │ "
+        f"R:{g_ret_hits}/{g_ret_total}({g_ret_pct:.0f}%) A:{g_kw_hits}/{g_kw_total}({g_kw_pct:.0f}%)    │ "
+        f"R:{b_ret_hits}/{b_ret_total}({b_ret_pct:.0f}%) A:{b_kw_hits}/{b_kw_total}({b_kw_pct:.0f}%)    │ "
         f"avg {g_avg_ms}ms │ avg {b_avg_ms}ms\n"
         + sep
     )
@@ -462,9 +483,9 @@ def render_report(queries: list[dict], results: dict) -> str:
         f"    Graph RAG  : {g_block_hits}/{block_total} correctly blocked",
         f"    Baseline   : {b_block_hits}/{block_total} correctly blocked",
         "",
-        "  Overall keyword accuracy (non-block queries)",
-        f"    Graph RAG  : {g_kw_hits}/{g_kw_total} ({g_kw_pct:.1f}%)",
-        f"    Baseline   : {b_kw_hits}/{b_kw_total} ({b_kw_pct:.1f}%)",
+        "  Overall scores (non-block queries)",
+        f"    Graph RAG  : Retrieval {g_ret_hits}/{g_ret_total} ({g_ret_pct:.1f}%)  →  Answer {g_kw_hits}/{g_kw_total} ({g_kw_pct:.1f}%)",
+        f"    Baseline   : Retrieval {b_ret_hits}/{b_ret_total} ({b_ret_pct:.1f}%)  →  Answer {b_kw_hits}/{b_kw_total} ({b_kw_pct:.1f}%)",
         "",
         "  Latency",
         f"    Graph RAG  : avg {g_avg_ms} ms  (includes graph traversal overhead)",
