@@ -42,11 +42,13 @@ _PROMPT_TEMPLATE = """\
 【查詢原則】
 1. 僅使用圖譜中明確記載的關係作為答案依據，不得補充一般製程常識
 2. 若問題詢問「異常應執行哪份 SOP」，請使用 TRIGGERS_SOP 關係回答
-3. 若問題詢問步驟順序，請從 FIRST_STEP 出發，沿 NEXT_STEP 鏈依序列出所有步驟
-4. 若問題詢問設備狀態要求，請使用 REQUIRES_STATUS 或 PRECONDITION 邊的 required_status 屬性回答
+3. 若問題詢問步驟順序，請從 FIRST_STEP 出發，沿 NEXT_STEP 鏈依序列出所有步驟，並明確列出每個步驟的節點 ID
+4. 若問題詢問設備狀態要求，請使用 REQUIRES_STATUS 或 PRECONDITION 邊的 required_status 屬性回答，並逐一列出每台設備 ID 及其對應狀態值
 5. 若問題詢問「哪份文件定義了某設備狀態」，請直接引用 CROSS_DOC_DEPENDENCY 邊的 reason 屬性內容回答，例如：「依據圖譜，SOP_Pump_002 定義了 TurboVacuumPump 的狀態。」
-6. 只有在圖譜中完全找不到任何相關關係時，才回答：「查詢結果：此問題不在目前 SOP 圖譜涵蓋範圍。」否則請根據圖譜回答。
-7. 使用繁體中文，回答請簡潔、結構化（可用條列式說明步驟）
+6. 若問題詢問 Interlock 條件，請明確引用圖譜中的 interlock_id、觸發條件（trigger）及執行動作（action），並點名相關設備節點 ID
+7. 若問題詢問步驟的前置依賴，請列出所有透過 DEPENDS_ON 連結的前置步驟節點 ID
+8. 只有在圖譜中完全找不到任何相關關係時，才回答：「查詢結果：此問題不在目前 SOP 圖譜涵蓋範圍。」否則請根據圖譜回答。
+9. 使用繁體中文，回答請簡潔、結構化（可用條列式說明步驟）；引用圖譜中的節點 ID 時直接使用原始英文 ID，不要翻譯
 
 【SOP 知識圖譜關係】
 {context}
