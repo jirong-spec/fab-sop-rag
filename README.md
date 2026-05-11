@@ -855,27 +855,30 @@ N（並發數）│   成功 │  Wall ms │  Avg ms │  Max ms │  備註
 
 兩條 pipeline 使用**相同的四道 guardrail**，評測標準：
 
-- **關鍵字命中率**：預期關鍵字出現在模型 **`answer` 欄位**中的比例（不計 `evidence_triples`，避免圖譜已撈到但模型沒實際回答的情況被虛報為正確）
+- **R（Retrieval）**：預期關鍵字出現在 **`evidence_triples`** 中的比例 → 圖譜/向量有沒有**抓到**正確資料
+- **A（Answer）**：預期關鍵字出現在模型 **`answer` 欄位**中的比例 → 模型有沒有**回答出**來（不計 `evidence_triples`，避免虛報）
 - **正確攔截率**：非 SOP 問題是否被 Guard 2 正確 `blocked`
 - **端對端延遲**：整條 pipeline 耗時
 
-### 逐題比較（Live 實測，2026-04-30）
+R✅ A❌ 代表圖譜有撈到資料但模型沒有引用 → generation 瓶頸；R❌ A❌ 代表資料根本沒撈到 → retrieval 瓶頸。
+
+### 逐題比較（Live 實測，2026-05-11）
 
 ```
-ID   │ 類別                        │ Graph RAG            │ Baseline RAG         │  Graph  │  Base
-─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
-q01  │ anomaly_handling            │ ✅ 2/2 (100%)        │ ✅ 2/2 (100%)        │  2851ms │  1662ms
-q02  │ sop_step_sequence  [↑HOP]   │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)         │  4764ms │   456ms
-q03  │ equipment_precondition      │ ⚠️  3/4  (75%)        │ ⚠️  3/4  (75%)        │  2374ms │  1258ms
-q04  │ step_dependency             │ ⚠️  2/3  (67%)        │ ✅ 3/3 (100%)        │  2396ms │  1805ms
-q05  │ cross_doc_dependency [↑HOP] │ ⚠️  1/2  (50%)        │ ✅ 2/2 (100%)        │  2251ms │  1063ms
-q06  │ interlock_condition         │ ❌ 0/3  (0%)         │ ⚠️  1/3  (33%)        │  4008ms │  3159ms
-q07  │ vent_procedure      [↑HOP]  │ ⚠️  1/2  (50%)        │ ❌ 0/2  (0%)         │  3509ms │   436ms
-q08  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   576ms │   574ms
-q09  │ off_topic_blocked           │ ✅ blocked           │ ✅ blocked           │   595ms │   595ms
-q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)         │  3548ms │  1378ms
-─────┼─────────────────────────────┼──────────────────────┼──────────────────────┼─────────┼────────
-     │ TOTALS                      │ 17/24 (70.8%)        │ 11/24 (45.8%)        │ avg 2687ms │ avg 1238ms
+ID   │ 類別                        │ Graph RAG (R=檢索 A=回答)  │ Baseline RAG               │  Graph  │  Base
+─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
+q01  │ anomaly_handling            │ R✅ A✅ 2/2               │ R✅ A✅ 2/2               │  2845ms │  1660ms
+q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4               │ R❌ A❌ 0/4               │  4758ms │   456ms
+q03  │ equipment_precondition      │ R✅ A⚠  3/4               │ R✅ A⚠  3/4               │  2371ms │  1257ms
+q04  │ step_dependency             │ R✅ A⚠  2/3               │ R✅ A✅ 3/3               │  2392ms │  1805ms
+q05  │ cross_doc_dependency [↑HOP] │ R✅ A⚠  1/2               │ R✅ A✅ 2/2               │  2249ms │  1063ms
+q06  │ interlock_condition         │ R✅ A❌ 0/3               │ R✅ A⚠  1/3               │  3993ms │  3147ms
+q07  │ vent_procedure      [↑HOP]  │ R✅ A⚠  1/2               │ R❌ A❌ 0/2               │  3509ms │   440ms
+q08  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   574ms │   575ms
+q09  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   594ms │   595ms
+q10  │ pump_check_sequence         │ R✅ A✅ 4/4               │ R❌ A❌ 0/4               │  3550ms │  1374ms
+─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
+     │ TOTALS                      │ R:24/24(100%) A:17/24(71%) │ R:14/24(58%) A:11/24(46%)  │ avg 2683ms │ avg 1237ms
 ```
 
 `[↑HOP]` 標記的題目需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）。
@@ -884,17 +887,19 @@ q10  │ pump_check_sequence         │ ✅ 4/4 (100%)        │ ❌ 0/4  (0%)
 
 | 指標 | Graph RAG | Baseline RAG | 差距 |
 |------|-----------|--------------|------|
-| **整體關鍵字命中率** | **70.8%** (17/24) | 45.8% (11/24) | +25.0 pp |
-| **多跳查詢命中率** | **75.0%** (6/8) | 25.0% (2/8) | **+50.0 pp** |
+| **Retrieval 命中率**（有抓到） | **100%** (24/24) | 58.3% (14/24) | **+41.7 pp** |
+| **Answer 命中率**（有回答對） | **70.8%** (17/24) | 45.8% (11/24) | +25.0 pp |
+| **多跳查詢 Answer 命中率** | **75.0%** (6/8) | 25.0% (2/8) | **+50.0 pp** |
 | **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 2687 ms | 1238 ms | +1449 ms |
+| **平均端對端延遲** | 2683 ms | 1237 ms | +1446 ms |
 
-> 以上數字為 Live 實測（Neo4j + vLLM Qwen2.5-3B + Chroma 全服務啟動，2026-04-30），準確率以 **answer 欄位**計算，評測關鍵字為語意實體（移除 schema 術語如 FIRST_STEP、PRECONDITION 等）。
+> 以上數字為 Live 實測（Neo4j + vLLM Qwen2.5-3B + Chroma 全服務啟動，2026-05-11），Answer 命中率以 **answer 欄位**計算，評測關鍵字為語意實體（移除 schema 術語如 FIRST_STEP、PRECONDITION 等）。
 
 **結論：**
 
-- Graph RAG 在多跳查詢的優勢顯著（+50 pp），Baseline RAG 僅靠文本相似度無法還原完整步驟鏈與跨文件依賴。
-- **q06（interlock_condition）** 兩條 pipeline 均表現不佳：interlock 屬性（`IL-E001`、`RF` 動作）在 3B 模型的回答中常被省略，換用 7B 以上模型預期可改善。
+- Graph RAG Retrieval 達到 **100%**：圖譜結構化關係確保所有 24 個語意關鍵字都出現在 evidence_triples 中。Baseline 只有 58%，步驟鏈（q02、q10）和依賴鏈（q07）完全抓不到。
+- **Generation 是當前瓶頸**：Graph RAG 的 R✅→A 落差（100%→71%）說明 3B 模型有時無法將圖譜中的屬性（如 interlock ID、RF 動作）完整引用進回答，換用 7B 以上模型預期可縮小此落差。
+- **q06（interlock_condition）** R✅ A❌：圖譜有抓到 `PressureInterlock`、`IL-E001`、`RF`，但 3B 模型的回答遺漏這些關鍵字，屬 generation 失敗。
 - 兩條 pipeline 的 guardrail 行為完全一致，topic guard 與 injection guard 均正確攔截非 SOP 問題。
 
 ### Citation Traceability
