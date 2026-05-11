@@ -929,7 +929,36 @@ Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 
 ---
 
-## 十四、架構說明
+## 十四、LLM 模型效能比較
+
+### 評估方式
+
+使用相同的 10 道測試題跑 Graph RAG pipeline，**準確率只看模型實際回答的 `answer` 欄位**是否包含預期關鍵字，不計入 `evidence_triples`（避免虛報：關鍵字出現在圖譜證據但模型沒真正回答到）。
+
+測試環境：RTX 3060 12GB，vLLM v0.6.3，`gpu_memory_utilization=0.8`，`max_model_len=4096`。
+
+### 結果
+
+| 模型 | 準確率（answer only） | avg 延遲 | vs FP16 延遲 |
+|------|----------------------|---------|-------------|
+| Qwen2.5-3B-Instruct（FP16） | **21/32 (65.6%)** | 2444 ms | — |
+| Qwen2.5-3B-Instruct-GPTQ-int8 | 20/32 (62.5%) | 1515 ms | -38% |
+| Qwen2.5-3B-Instruct-GPTQ-int4 | 19/32 (59.4%) | 1095 ms | -55% |
+| Qwen2.5-3B-Instruct-AWQ-int4 | 16/32 (50.0%) | 1549 ms | -37% |
+| Qwen2.5-7B-Instruct-AWQ-int4 | 19/32 (59.4%) | 3033 ms | +24% |
+
+### 分析
+
+- **GPTQ-int8 是最佳平衡點**：準確率只少 3 pp（65.6% → 62.5%），推論速度快 38%，適合對延遲敏感的場景。
+- **GPTQ-int4** 速度最快（-55%），但準確率再降 3 pp，適合硬體資源極為有限時。
+- **AWQ-int4（3B）比 GPTQ-int4 慢但更不準**：vLLM v0.6.3 的 AWQ 需強制 `--dtype float16`（不支援 bfloat16），在 RTX 3060 上反而沒有速度優勢。
+- **7B AWQ-int4 沒有比 3B FP16 更準**（同樣 59%），且延遲高出 24%，CP 值最低。
+
+> 準確率上限受限於 Qwen2.5-3B 模型本身的指令跟隨能力，而非圖譜資料品質。換用更大的模型（如 7B FP16）預期可提升準確率，但需要 VRAM ≥ 14 GB。
+
+---
+
+## 十五、架構說明
 
 ```
 fab-sop-rag/

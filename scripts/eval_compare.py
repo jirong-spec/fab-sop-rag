@@ -55,14 +55,10 @@ def score_response(resp: dict, expected: dict) -> dict:
             "is_block_query": True,
         }
 
-    # Search answer text + all evidence
-    haystack = (
-        resp.get("answer", "")
-        + " "
-        + " ".join(resp.get("evidence_triples", []))
-        + " "
-        + " ".join(resp.get("entities", []))
-    )
+    # Only check the model's generated answer — not evidence_triples or entities.
+    # Including evidence in the haystack inflates accuracy: keywords in retrieved
+    # triples count as "found" even when the model's answer is wrong or missing them.
+    haystack = resp.get("answer", "")
     hits = sum(1 for kw in keywords if kw.lower() in haystack.lower())
     return {
         "correct_block": None,
