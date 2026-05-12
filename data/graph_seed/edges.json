@@ -141,7 +141,7 @@
     "from_id": "CheckVacuumPump",
     "to_label": "SOPStep",
     "to_id": "VerifyGasFlow",
-    "properties": {}
+    "properties": {"description": "CheckVacuumPump 完成後，下一步執行 VerifyGasFlow"}
   },
   {
     "type": "NEXT_STEP",
@@ -149,7 +149,7 @@
     "from_id": "VerifyGasFlow",
     "to_label": "SOPStep",
     "to_id": "InspectChamberLeak",
-    "properties": {}
+    "properties": {"description": "VerifyGasFlow 完成後，下一步執行 InspectChamberLeak"}
   },
   {
     "type": "NEXT_STEP",
@@ -157,7 +157,7 @@
     "from_id": "InspectChamberLeak",
     "to_label": "SOPStep",
     "to_id": "RestoreProcessCondition",
-    "properties": {}
+    "properties": {"description": "InspectChamberLeak 完成後，下一步執行 RestoreProcessCondition"}
   },
   {
     "type": "NEXT_STEP",
@@ -165,7 +165,7 @@
     "from_id": "ReadPumpStatus",
     "to_label": "SOPStep",
     "to_id": "CheckBearingVibration",
-    "properties": {}
+    "properties": {"description": "ReadPumpStatus 完成後，下一步執行 CheckBearingVibration"}
   },
   {
     "type": "NEXT_STEP",
@@ -173,7 +173,7 @@
     "from_id": "CheckBearingVibration",
     "to_label": "SOPStep",
     "to_id": "VerifyPumpCooling",
-    "properties": {}
+    "properties": {"description": "CheckBearingVibration 完成後，下一步執行 VerifyPumpCooling"}
   },
   {
     "type": "NEXT_STEP",
@@ -181,7 +181,7 @@
     "from_id": "VerifyPumpCooling",
     "to_label": "SOPStep",
     "to_id": "LogAndClearAlarm",
-    "properties": {}
+    "properties": {"description": "VerifyPumpCooling 完成後，下一步執行 LogAndClearAlarm"}
   },
   {
     "type": "NEXT_STEP",
@@ -189,7 +189,7 @@
     "from_id": "IsolateRFAndGas",
     "to_label": "SOPStep",
     "to_id": "SwitchPumpToStandby",
-    "properties": {}
+    "properties": {"description": "IsolateRFAndGas 完成後，下一步執行 SwitchPumpToStandby"}
   },
   {
     "type": "NEXT_STEP",
@@ -197,7 +197,7 @@
     "from_id": "SwitchPumpToStandby",
     "to_label": "SOPStep",
     "to_id": "OpenVentValve",
-    "properties": {}
+    "properties": {"description": "SwitchPumpToStandby 完成後，下一步執行 OpenVentValve"}
   },
   {
     "type": "NEXT_STEP",
@@ -205,7 +205,7 @@
     "from_id": "OpenVentValve",
     "to_label": "SOPStep",
     "to_id": "ConfirmAtmPressure",
-    "properties": {}
+    "properties": {"description": "OpenVentValve 完成後，下一步執行 ConfirmAtmPressure"}
   },
   {
     "type": "REQUIRES_STATUS",
@@ -263,7 +263,7 @@
     "from_id": "VerifyGasFlow",
     "to_label": "SOPStep",
     "to_id": "CheckVacuumPump",
-    "properties": {}
+    "properties": {"description": "VerifyGasFlow 執行前必須先完成前置依賴步驟 CheckVacuumPump"}
   },
   {
     "type": "DEPENDS_ON",
@@ -271,7 +271,7 @@
     "from_id": "InspectChamberLeak",
     "to_label": "SOPStep",
     "to_id": "VerifyGasFlow",
-    "properties": {}
+    "properties": {"description": "InspectChamberLeak 執行前必須先完成前置依賴步驟 VerifyGasFlow"}
   },
   {
     "type": "DEPENDS_ON",
@@ -279,7 +279,7 @@
     "from_id": "RestoreProcessCondition",
     "to_label": "SOPStep",
     "to_id": "InspectChamberLeak",
-    "properties": {}
+    "properties": {"description": "RestoreProcessCondition 執行前必須先完成前置依賴步驟 InspectChamberLeak"}
   },
   {
     "type": "DEPENDS_ON",
@@ -287,7 +287,7 @@
     "from_id": "CheckBearingVibration",
     "to_label": "SOPStep",
     "to_id": "ReadPumpStatus",
-    "properties": {}
+    "properties": {"description": "CheckBearingVibration 執行前必須先完成前置依賴步驟 ReadPumpStatus"}
   },
   {
     "type": "DEPENDS_ON",
@@ -295,7 +295,7 @@
     "from_id": "VerifyPumpCooling",
     "to_label": "SOPStep",
     "to_id": "CheckBearingVibration",
-    "properties": {}
+    "properties": {"description": "VerifyPumpCooling 執行前必須先完成前置依賴步驟 CheckBearingVibration"}
   },
   {
     "type": "DEPENDS_ON",
@@ -303,7 +303,7 @@
     "from_id": "LogAndClearAlarm",
     "to_label": "SOPStep",
     "to_id": "VerifyPumpCooling",
-    "properties": {}
+    "properties": {"description": "LogAndClearAlarm 執行前必須先完成前置依賴步驟 VerifyPumpCooling"}
   },
   {
     "type": "DEPENDS_ON",
@@ -311,7 +311,7 @@
     "from_id": "SwitchPumpToStandby",
     "to_label": "SOPStep",
     "to_id": "IsolateRFAndGas",
-    "properties": {}
+    "properties": {"description": "SwitchPumpToStandby 執行前必須先完成前置依賴步驟 IsolateRFAndGas"}
   },
   {
     "type": "DEPENDS_ON",
@@ -319,7 +319,7 @@
     "from_id": "OpenVentValve",
     "to_label": "SOPStep",
     "to_id": "SwitchPumpToStandby",
-    "properties": {}
+    "properties": {"description": "OpenVentValve 執行前必須先完成前置依賴步驟 SwitchPumpToStandby"}
   },
   {
     "type": "DEPENDS_ON",
@@ -327,7 +327,7 @@
     "from_id": "ConfirmAtmPressure",
     "to_label": "SOPStep",
     "to_id": "OpenVentValve",
-    "properties": {}
+    "properties": {"description": "ConfirmAtmPressure 執行前必須先完成前置依賴步驟 OpenVentValve"}
   },
   {
     "type": "PRECONDITION",
