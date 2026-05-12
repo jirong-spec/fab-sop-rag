@@ -14,7 +14,7 @@
 |------|------|------|
 | `api` | FastAPI | RAG pipeline + 4 道 guardrail |
 | `neo4j` | Neo4j 5 | SOP 知識圖譜（節點 + 關係） |
-| `vllm` | vLLM + Qwen2.5-3B | 本地 LLM 推論（OpenAI 相容） |
+| `vllm` | vLLM + Qwen2.5-7B-Instruct-AWQ-int4 | 本地 LLM 推論（OpenAI 相容） |
 
 三個服務用 Docker Compose 跑在同一台機器上，無需外部雲端服務。
 
@@ -165,7 +165,7 @@ Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 - **AWQ-int4（3B）**：準確率與 GPTQ-int4 相同（79.2%），但速度比 GPTQ-int4 慢（vLLM v0.6.3 強制 `--dtype float16`，在 RTX 3060 無速度優勢）。
 - **7B AWQ-int4 準確率最高**（91.7%，+8.4 pp vs 3B FP16），延遲 3961 ms（+30%）。若 VRAM 允許，7B 是精度優先的最佳選擇。
 
-> 評測採用 bi-encoder reranking + cap=50，準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。
+> 評測採用 bi-encoder reranking + 動態 cap（top_score × 0.5 閾值），準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。
 
 ---
 
@@ -276,7 +276,7 @@ scored = [t for t in scored_all if t[0] >= threshold][:100]
 │  ┌──────────────┐   ┌──────────────────────────────────────┐   │
 │  │  neo4j       │   │  vllm  (vllm/vllm-openai:v0.6.3)    │   │
 │  │  neo4j:5     │   │  port  : 8299 → 8000                 │   │
-│  │  ports:      │   │  model : /llm/Qwen2.5-3B-Instruct    │   │
+│  │  ports:      │   │  model : /llm/Qwen2.5-7B-AWQ-int4    │   │
 │  │  7474 → 7474 │   │  GPU   : device_ids ["0"]            │   │
 │  │  7687 → 7687 │   │  shm   : 16 GB                       │   │
 │  │  heap: 512m~ │   │  ctx   : max-model-len 4096          │   │
@@ -300,7 +300,7 @@ scored = [t for t in scored_all if t[0] >= threshold][:100]
 |------|-------|-----------|------|---------|
 | `api` | `python:3.12-slim`（自建） | `8000` | FastAPI + RAG pipeline | `GET /health` |
 | `neo4j` | `neo4j:5` | `7474`（Browser）、`7687`（Bolt） | SOP 知識圖譜 | `wget localhost:7474` |
-| `vllm` | `vllm/vllm-openai:v0.6.3.post1` | `8299` | Qwen2.5-3B 本地推論 | `GET /v1/models` |
+| `vllm` | `vllm/vllm-openai:v0.6.3.post1` | `8299` | Qwen2.5-7B-AWQ-int4 本地推論 | `GET /v1/models` |
 
 ### 啟動依賴順序
 
@@ -321,13 +321,13 @@ vllm  (service_started)  ──┘
 | `neo4j_logs` | `/logs`（neo4j container） | Neo4j server 日誌 |
 | `chroma_data` | `/data/chroma`（api container） | Chroma 向量索引，ingest 後即持久化 |
 | `hf_cache` | `/root/.cache/huggingface`（api container） | sentence-transformers embedding 模型快取 |
-| `/home/jimmy/models` | `/llm`（vllm container，read-only） | 本機預先下載的 LLM 權重（Qwen2.5-3B-Instruct） |
+| `/home/jimmy/models` | `/llm`（vllm container，read-only） | 本機預先下載的 LLM 權重（Qwen2.5-7B-Instruct-AWQ-int4） |
 
 ### vLLM 推論參數
 
 | 參數 | 值 | 說明 |
 |------|----|------|
-| `--model` | `/llm/Qwen2.5-3B-Instruct` | 從本機掛載路徑載入，離線不需 HuggingFace |
+| `--model` | `/llm/Qwen2.5-7B-Instruct-AWQ-int4` | 從本機掛載路徑載入，離線不需 HuggingFace |
 | `--max-model-len` | `4096` | context window 上限 |
 | `--gpu-memory-utilization` | `0.8` | 保留 20% GPU VRAM 給 OS / CUDA overhead |
 | `--tensor-parallel-size` | `1` | 單卡推論 |
