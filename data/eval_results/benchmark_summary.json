@@ -1,0 +1,32 @@
+[
+  {
+    "score": "20/24",
+    "pct": "83.3%",
+    "avg_ms": 3038,
+    "model": "Qwen2.5-3B-Instruct"
+  },
+  {
+    "score": "20/24",
+    "pct": "83.3%",
+    "avg_ms": 2051,
+    "model": "Qwen2.5-3B-Instruct-GPTQ-int8"
+  },
+  {
+    "score": "19/24",
+    "pct": "79.2%",
+    "avg_ms": 1725,
+    "model": "Qwen2.5-3B-Instruct-GPTQ-int4"
+  },
+  {
+    "score": "19/24",
+    "pct": "79.2%",
+    "avg_ms": 2312,
+    "model": "Qwen2.5-3B-Instruct-AWQ-int4"
+  },
+  {
+    "score": "22/24",
+    "pct": "91.7%",
+    "avg_ms": 3961,
+    "model": "Qwen2.5-7B-Instruct-AWQ-int4"
+  }
+]
