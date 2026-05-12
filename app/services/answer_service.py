@@ -99,9 +99,19 @@ def generate_answer(
     if not triples:
         return _NO_INFO_ANSWER, []
 
-    # Rank triples by relevance to the question and annotate each with a
-    # percentage score so the LLM can focus on the most relevant ones.
-    scored = _score_triples(question, triples[:50], entities=entities)
+    # Rank all triples by relevance, then take the minimum subset that keeps
+    # every triple scoring ≥ 50% of the top score (dynamic cap).
+    # Floor at 5 triples, hard ceiling at 100 to bound LLM context size.
+    scored_all = _score_triples(question, triples, entities=entities)
+    if scored_all:
+        threshold = max(scored_all[0][0] * 0.50, 20)
+        scored = [item for item in scored_all if item[0] >= threshold]
+        scored = scored[:100] if len(scored) > 100 else scored
+        if len(scored) < 5:
+            scored = scored_all[:5]
+    else:
+        scored = scored_all
+    logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold if scored_all else 0)
     model_triples = [triple for _, triple in scored]
     context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
