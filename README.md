@@ -165,7 +165,7 @@ Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 - **AWQ-int4（3B）**：準確率與 GPTQ-int4 相同（79.2%），但速度比 GPTQ-int4 慢（vLLM v0.6.3 強制 `--dtype float16`，在 RTX 3060 無速度優勢）。
 - **7B AWQ-int4 準確率最高**（91.7%，+8.4 pp vs 3B FP16），延遲 3961 ms（+30%）。若 VRAM 允許，7B 是精度優先的最佳選擇。
 
-> 評測採用 bi-encoder reranking + 動態 cap（top_score × 0.5 閾值），準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。
+> 評測採用 bi-encoder reranking + **固定 cap=50**，準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。現行 pipeline 改用動態 cap，7B 準確率維持 91.7%，延遲降至 3491 ms，詳見第四節。
 
 ---
 
