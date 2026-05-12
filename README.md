@@ -48,7 +48,162 @@
 
 ---
 
-## 二、Docker Compose 服務架構
+## 二、Baseline RAG vs Graph RAG 評估結果
+
+### 評估方法
+
+使用 `data/sample_queries/fab_queries.json` 的 10 道測試題，同時跑兩條 pipeline：
+
+| Pipeline | 檢索機制 | `reasoning_type` |
+|----------|---------|-----------------|
+| **Graph RAG**（本系統） | 向量 → 實體抽取 → Neo4j 圖譜遍歷 → triples | `graph_rag` |
+| **Baseline RAG**（對照組） | 向量 → Chroma 文本片段（無圖譜遍歷） | `baseline_rag` |
+
+兩條 pipeline 使用**相同的四道 guardrail**，評測標準：
+
+- **R（Retrieval）**：預期關鍵字出現在 **`evidence_triples`** 中的比例 → 圖譜/向量有沒有**抓到**正確資料
+- **A（Answer）**：預期關鍵字出現在模型 **`answer` 欄位**中的比例 → 模型有沒有**回答出**來（不計 `evidence_triples`，避免虛報）
+- **正確攔截率**：非 SOP 問題是否被 Guard 2 正確 `blocked`
+- **端對端延遲**：整條 pipeline 耗時
+
+R✅ A❌ 代表圖譜有撈到資料但模型沒有引用 → generation 瓶頸；R❌ A❌ 代表資料根本沒撈到 → retrieval 瓶頸。
+
+### 逐題比較（Live 實測，2026-05-12，Qwen2.5-7B-Instruct-AWQ-int4，bi-encoder reranking + cap=50）
+
+```
+ID   │ 類別                        │ Graph RAG (R=檢索 A=回答)  │ Baseline RAG               │  Graph  │  Base
+─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
+q01  │ anomaly_handling            │ R✅ A✅ 2/2               │ R✅ A✅ 2/2               │  4952ms │  1901ms
+q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4               │ R❌ A❌ 0/4               │  4479ms │  1426ms
+q03  │ equipment_precondition      │ R✅ A✅ 4/4               │ R✅ A✅ 4/4               │  6082ms │  2677ms
+q04  │ step_dependency             │ R✅ A✅ 3/3               │ R✅ A✅ 3/3               │  3464ms │  1737ms
+q05  │ cross_doc_dependency [↑HOP] │ R✅ A⚠  1/2               │ R✅ A✅ 2/2               │  3727ms │  1219ms
+q06  │ interlock_condition         │ R✅ A⚠  2/3               │ R✅ A⚠  1/3               │  6602ms │  2468ms
+q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2               │ R❌ A❌ 0/2               │  4253ms │  1446ms
+q08  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   726ms │   725ms
+q09  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   811ms │   812ms
+q10  │ pump_check_sequence         │ R✅ A✅ 4/4               │ R❌ A⚠  1/4               │  4522ms │  1549ms
+─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
+     │ TOTALS                      │ R:24/24(100%) A:22/24(92%) │ R:14/24(58%) A:13/24(54%)  │ avg 3961ms │ avg 1596ms
+```
+
+`[↑HOP]` 標記的題目需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）。
+
+### 量化成果
+
+| 指標 | Graph RAG | Baseline RAG | 差距 |
+|------|-----------|--------------|------|
+| **Retrieval 命中率**（有抓到） | **100%** (24/24) | 58.3% (14/24) | **+41.7 pp** |
+| **Answer 命中率**（有回答對） | **91.7%** (22/24) | 54.2% (13/24) | **+37.5 pp** |
+| **多跳查詢 Answer 命中率** | **87.5%** (7/8) | 25.0% (2/8) | **+62.5 pp** |
+| **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
+| **平均端對端延遲** | 3961 ms | 1596 ms | +2365 ms |
+
+> 以上數字為 Live 實測（Neo4j + vLLM **Qwen2.5-7B-Instruct-AWQ-int4** + Chroma 全服務啟動，2026-05-12），Graph RAG 採用 bi-encoder cosine reranking + cap=50。Answer 命中率以 **answer 欄位**計算，R 命中率以 **model_triples**（模型實際收到的 triples）計算。評測關鍵字為語意實體（移除 schema 術語如 FIRST_STEP、PRECONDITION 等）。
+
+**結論：**
+
+- Graph RAG Retrieval 達到 **100%**：bi-encoder reranking + cap=50 確保所有關鍵 triples 都進入模型 context（INTERLOCK_WITH triple 原本排在第 47 位，reranking 後升至第 1 位）。Baseline 只有 58%，步驟鏈（q02、q10）和依賴鏈（q07）完全抓不到。
+- **7B Answer 91.7%**：較 3B（83.3%）提升 +8.4 pp；q04、q07 從 partial → 全對，顯示 7B 的指令跟隨能力明顯優於 3B。
+- **q06 仍為最難題**（R✅ A⚠ 2/3）：即使 7B 也只答出 IL-E001 和 trigger，漏掉 RF，屬複雜屬性提取的 generation 上限。
+- 兩條 pipeline 的 guardrail 行為完全一致，topic guard 與 injection guard 均正確攔截非 SOP 問題。
+
+### Citation Traceability
+
+每個 Graph RAG 回應包含 `source_docs` 欄位，自動從 `evidence_triples` 提取引用的 SOP 文件 ID：
+
+```json
+{
+  "answer": "依據圖譜，SOP_Etch_001 步驟 CheckVacuumPump 需要 TurboVacuumPump 狀態為 RUNNING...",
+  "source_docs": ["SOP_Etch_001", "SOP_Pump_002"],
+  "evidence_triples": [
+    "(SOP_Etch_001)-[:PRECONDITION {required_status: 'RUNNING'}]->(TurboVacuumPump)",
+    "(SOP_Etch_001)-[:CROSS_DOC_DEPENDENCY]->(SOP_Pump_002)"
+  ]
+}
+```
+
+### 執行評測
+
+```bash
+# 離線 mock 模式（不需要任何服務）
+python3 scripts/eval_compare.py --mock
+
+# 儲存 JSON 結果
+python3 scripts/eval_compare.py --mock --output data/eval_results/latest.json
+
+# Live 模式（需要 Neo4j + vLLM + Chroma 全部啟動後）
+docker compose run --rm api python scripts/eval_compare.py
+```
+
+Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
+
+---
+
+## 三、LLM 模型效能比較
+
+### 評估方式
+
+使用相同的 10 道測試題跑 Graph RAG pipeline，**準確率只看模型實際回答的 `answer` 欄位**是否包含預期關鍵字，不計入 `evidence_triples`（避免虛報：關鍵字出現在圖譜證據但模型沒真正回答到）。
+
+測試環境：RTX 3060 12GB，vLLM v0.6.3，`gpu_memory_utilization=0.8`，`max_model_len=4096`。
+
+### 結果
+
+| 模型 | 準確率（answer only） | avg 延遲 | vs FP16 延遲 |
+|------|----------------------|---------|-------------|
+| Qwen2.5-3B-Instruct（FP16） | **20/24 (83.3%)** | 3038 ms | — |
+| Qwen2.5-3B-Instruct-GPTQ-int8 | **20/24 (83.3%)** | 2051 ms | -32% |
+| Qwen2.5-3B-Instruct-GPTQ-int4 | 19/24 (79.2%) | 1725 ms | -43% |
+| Qwen2.5-3B-Instruct-AWQ-int4 | 19/24 (79.2%) | 2312 ms | -24% |
+| Qwen2.5-7B-Instruct-AWQ-int4 | **22/24 (91.7%)** | 3961 ms | +30% |
+
+### 分析
+
+- **GPTQ-int8 是最佳平衡點**：準確率與 FP16 完全相同（83.3%），推論速度快 32%，是延遲敏感場景的首選。
+- **GPTQ-int4** 速度最快（-43%），準確率小降 4 pp（79.2%），VRAM 需求最低。
+- **AWQ-int4（3B）**：準確率與 GPTQ-int4 相同（79.2%），但速度比 GPTQ-int4 慢（vLLM v0.6.3 強制 `--dtype float16`，在 RTX 3060 無速度優勢）。
+- **7B AWQ-int4 準確率最高**（91.7%，+8.4 pp vs 3B FP16），延遲 3961 ms（+30%）。若 VRAM 允許，7B 是精度優先的最佳選擇。
+
+> 評測採用 bi-encoder reranking + cap=50，準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。
+
+---
+
+## 四、Triple Reranking 策略比較
+
+### 背景
+
+Graph traversal 對 q06（interlock 查詢）會回傳 ~48 條 triples，但關鍵的 INTERLOCK_WITH triple 排在第 47 位。若直接截取前 N 條，模型永遠看不到它。Reranking 可將最相關的 triple 排到前面，並擴大截取上限。
+
+### R / A 指標說明
+
+- **R（Retrieval）**：預期關鍵字出現在模型實際收到的 triples（`model_triples`）中的比例
+- **A（Answer）**：預期關鍵字出現在模型回答（`answer`）中的比例
+
+### 實驗結果（Qwen2.5-3B，10 道題，2026-05-12）
+
+| 方法 | cap | R | A | avg 延遲 |
+|------|-----|---|---|---------|
+| 無 reranking（原始） | 25 | ~71%\* | 71% | 2683 ms |
+| Bi-encoder cosine | 25 | 92% | 71% | 2506 ms |
+| BM25 + Entity boost | 25 | 92% | 63% | 2718 ms |
+| Cross-encoder（BGE） | 50 | 100% | 79% | 22618 ms 🔴 |
+| BM25 + Entity boost | 50 | 100% | 67% | 2554 ms |
+| **Bi-encoder cosine** | **50** | **100%** | **83%** | **3012 ms** ✅ |
+
+\* 原始 R 是對全部 triples 計算（含模型未看到的），實際模型可見 R 約 71%。
+
+### 結論
+
+- **Bi-encoder cap=50 是最佳組合**：Retrieval 達 100%、Answer 83%、延遲 3012 ms（+329 ms vs cap=25）
+- **cap 的影響大於排序演算法的選擇**：從 25 → 50 讓 Answer 從 71% → 83%；換 BM25 或 Cross-encoder 在 cap=25 反而退步
+- **Cross-encoder（BGE）**準確率不錯（79%）但延遲爆炸（22 秒），不適合 online serving
+- **BM25 的問題**：中文問題 + 英文 triple 的跨語言場景中，BM25 keyword 匹配效果不如 embedding 語意相似度
+- 剩下的 4/24 answer 失敗屬於 3B 模型 generation 上限，reranking 無法進一步改善
+
+---
+
+## 五、Docker Compose 服務架構
 
 ### 服務拓撲
 
@@ -143,7 +298,7 @@ python:3.12-slim
 
 ---
 
-## 三、事前準備
+## 六、事前準備
 
 | 需求 | 最低版本 | 備註 |
 |------|---------|------|
@@ -175,7 +330,7 @@ docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
 
 ---
 
-## 四、啟動步驟
+## 七、啟動步驟
 
 ### 步驟 1：設定環境變數
 
@@ -272,7 +427,7 @@ curl http://localhost:8000/v1/health
 
 ---
 
-## 五、呼叫 API
+## 八、呼叫 API
 
 ### 端點
 
@@ -335,7 +490,7 @@ curl -X POST http://localhost:8000/v1/ask \
 
 ---
 
-## 六、讀懂回應
+## 九、讀懂回應
 
 ```json
 {
@@ -390,7 +545,7 @@ curl -X POST http://localhost:8000/v1/ask \
 
 ---
 
-## 七、Guardrail 四道關卡
+## 十、Guardrail 四道關卡
 
 | # | 階段 | 名稱 | 機制 | 擋什麼 |
 |---|------|------|------|--------|
@@ -413,7 +568,7 @@ curl -X POST http://localhost:8000/v1/ask \
 
 ---
 
-## 八、資料說明
+## 十一、資料說明
 
 ```
 data/
@@ -637,7 +792,7 @@ nodes_extracted.json / edges_extracted.json
 
 ---
 
-## 九、服務端點總覽
+## 十二、服務端點總覽
 
 | 端點 | 說明 |
 |------|------|
@@ -718,7 +873,7 @@ MATCH ()-[r]->() RETURN count(r) // 應為 48
 
 ---
 
-## 十、停止與重置
+## 十三、停止與重置
 
 ```bash
 # 停止服務（資料保留）
@@ -737,7 +892,7 @@ docker compose run --rm api python scripts/ingest_all.py
 
 ---
 
-## 十一、常見問題
+## 十四、常見問題
 
 **Q：vLLM 一直沒啟動？**
 
@@ -787,7 +942,7 @@ API 仍可啟動，但：
 
 ---
 
-## 十二、併發壓力測試
+## 十五、併發壓力測試
 
 ### 測試環境
 
@@ -839,161 +994,6 @@ N（並發數）│   成功 │  Wall ms │  Avg ms │  Max ms │  備註
 2. **更大 GPU**：RTX 4090 24 GB 或 A100 40 GB，KV cache 容量倍增
 3. **vLLM tensor parallelism**：多張 GPU 水平切割模型（`--tensor-parallel-size 2`）
 4. **多實例 + load balancer**：多台機器各跑一套 stack，前端加 Nginx 做 round-robin
-
----
-
-## 十三、Baseline RAG vs Graph RAG 評估結果
-
-### 評估方法
-
-使用 `data/sample_queries/fab_queries.json` 的 10 道測試題，同時跑兩條 pipeline：
-
-| Pipeline | 檢索機制 | `reasoning_type` |
-|----------|---------|-----------------|
-| **Graph RAG**（本系統） | 向量 → 實體抽取 → Neo4j 圖譜遍歷 → triples | `graph_rag` |
-| **Baseline RAG**（對照組） | 向量 → Chroma 文本片段（無圖譜遍歷） | `baseline_rag` |
-
-兩條 pipeline 使用**相同的四道 guardrail**，評測標準：
-
-- **R（Retrieval）**：預期關鍵字出現在 **`evidence_triples`** 中的比例 → 圖譜/向量有沒有**抓到**正確資料
-- **A（Answer）**：預期關鍵字出現在模型 **`answer` 欄位**中的比例 → 模型有沒有**回答出**來（不計 `evidence_triples`，避免虛報）
-- **正確攔截率**：非 SOP 問題是否被 Guard 2 正確 `blocked`
-- **端對端延遲**：整條 pipeline 耗時
-
-R✅ A❌ 代表圖譜有撈到資料但模型沒有引用 → generation 瓶頸；R❌ A❌ 代表資料根本沒撈到 → retrieval 瓶頸。
-
-### 逐題比較（Live 實測，2026-05-12，Qwen2.5-7B-Instruct-AWQ-int4，bi-encoder reranking + cap=50）
-
-```
-ID   │ 類別                        │ Graph RAG (R=檢索 A=回答)  │ Baseline RAG               │  Graph  │  Base
-─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
-q01  │ anomaly_handling            │ R✅ A✅ 2/2               │ R✅ A✅ 2/2               │  4952ms │  1901ms
-q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4               │ R❌ A❌ 0/4               │  4479ms │  1426ms
-q03  │ equipment_precondition      │ R✅ A✅ 4/4               │ R✅ A✅ 4/4               │  6082ms │  2677ms
-q04  │ step_dependency             │ R✅ A✅ 3/3               │ R✅ A✅ 3/3               │  3464ms │  1737ms
-q05  │ cross_doc_dependency [↑HOP] │ R✅ A⚠  1/2               │ R✅ A✅ 2/2               │  3727ms │  1219ms
-q06  │ interlock_condition         │ R✅ A⚠  2/3               │ R✅ A⚠  1/3               │  6602ms │  2468ms
-q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2               │ R❌ A❌ 0/2               │  4253ms │  1446ms
-q08  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   726ms │   725ms
-q09  │ off_topic_blocked           │ ✅ blocked                │ ✅ blocked                │   811ms │   812ms
-q10  │ pump_check_sequence         │ R✅ A✅ 4/4               │ R❌ A⚠  1/4               │  4522ms │  1549ms
-─────┼─────────────────────────────┼────────────────────────────┼────────────────────────────┼─────────┼────────
-     │ TOTALS                      │ R:24/24(100%) A:22/24(92%) │ R:14/24(58%) A:13/24(54%)  │ avg 3961ms │ avg 1596ms
-```
-
-`[↑HOP]` 標記的題目需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）。
-
-### 量化成果
-
-| 指標 | Graph RAG | Baseline RAG | 差距 |
-|------|-----------|--------------|------|
-| **Retrieval 命中率**（有抓到） | **100%** (24/24) | 58.3% (14/24) | **+41.7 pp** |
-| **Answer 命中率**（有回答對） | **91.7%** (22/24) | 54.2% (13/24) | **+37.5 pp** |
-| **多跳查詢 Answer 命中率** | **87.5%** (7/8) | 25.0% (2/8) | **+62.5 pp** |
-| **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 3961 ms | 1596 ms | +2365 ms |
-
-> 以上數字為 Live 實測（Neo4j + vLLM **Qwen2.5-7B-Instruct-AWQ-int4** + Chroma 全服務啟動，2026-05-12），Graph RAG 採用 bi-encoder cosine reranking + cap=50。Answer 命中率以 **answer 欄位**計算，R 命中率以 **model_triples**（模型實際收到的 triples）計算。評測關鍵字為語意實體（移除 schema 術語如 FIRST_STEP、PRECONDITION 等）。
-
-**結論：**
-
-- Graph RAG Retrieval 達到 **100%**：bi-encoder reranking + cap=50 確保所有關鍵 triples 都進入模型 context（INTERLOCK_WITH triple 原本排在第 47 位，reranking 後升至第 1 位）。Baseline 只有 58%，步驟鏈（q02、q10）和依賴鏈（q07）完全抓不到。
-- **7B Answer 91.7%**：較 3B（83.3%）提升 +8.4 pp；q04、q07 從 partial → 全對，顯示 7B 的指令跟隨能力明顯優於 3B。
-- **q06 仍為最難題**（R✅ A⚠ 2/3）：即使 7B 也只答出 IL-E001 和 trigger，漏掉 RF，屬複雜屬性提取的 generation 上限。
-- 兩條 pipeline 的 guardrail 行為完全一致，topic guard 與 injection guard 均正確攔截非 SOP 問題。
-
-### Citation Traceability
-
-每個 Graph RAG 回應包含 `source_docs` 欄位，自動從 `evidence_triples` 提取引用的 SOP 文件 ID：
-
-```json
-{
-  "answer": "依據圖譜，SOP_Etch_001 步驟 CheckVacuumPump 需要 TurboVacuumPump 狀態為 RUNNING...",
-  "source_docs": ["SOP_Etch_001", "SOP_Pump_002"],
-  "evidence_triples": [
-    "(SOP_Etch_001)-[:PRECONDITION {required_status: 'RUNNING'}]->(TurboVacuumPump)",
-    "(SOP_Etch_001)-[:CROSS_DOC_DEPENDENCY]->(SOP_Pump_002)"
-  ]
-}
-```
-
-### 執行評測
-
-```bash
-# 離線 mock 模式（不需要任何服務）
-python3 scripts/eval_compare.py --mock
-
-# 儲存 JSON 結果
-python3 scripts/eval_compare.py --mock --output data/eval_results/latest.json
-
-# Live 模式（需要 Neo4j + vLLM + Chroma 全部啟動後）
-docker compose run --rm api python scripts/eval_compare.py
-```
-
-Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
-
----
-
-## 十四、LLM 模型效能比較
-
-### 評估方式
-
-使用相同的 10 道測試題跑 Graph RAG pipeline，**準確率只看模型實際回答的 `answer` 欄位**是否包含預期關鍵字，不計入 `evidence_triples`（避免虛報：關鍵字出現在圖譜證據但模型沒真正回答到）。
-
-測試環境：RTX 3060 12GB，vLLM v0.6.3，`gpu_memory_utilization=0.8`，`max_model_len=4096`。
-
-### 結果
-
-| 模型 | 準確率（answer only） | avg 延遲 | vs FP16 延遲 |
-|------|----------------------|---------|-------------|
-| Qwen2.5-3B-Instruct（FP16） | **20/24 (83.3%)** | 3038 ms | — |
-| Qwen2.5-3B-Instruct-GPTQ-int8 | **20/24 (83.3%)** | 2051 ms | -32% |
-| Qwen2.5-3B-Instruct-GPTQ-int4 | 19/24 (79.2%) | 1725 ms | -43% |
-| Qwen2.5-3B-Instruct-AWQ-int4 | 19/24 (79.2%) | 2312 ms | -24% |
-| Qwen2.5-7B-Instruct-AWQ-int4 | **22/24 (91.7%)** | 3961 ms | +30% |
-
-### 分析
-
-- **GPTQ-int8 是最佳平衡點**：準確率與 FP16 完全相同（83.3%），推論速度快 32%，是延遲敏感場景的首選。
-- **GPTQ-int4** 速度最快（-43%），準確率小降 4 pp（79.2%），VRAM 需求最低。
-- **AWQ-int4（3B）**：準確率與 GPTQ-int4 相同（79.2%），但速度比 GPTQ-int4 慢（vLLM v0.6.3 強制 `--dtype float16`，在 RTX 3060 無速度優勢）。
-- **7B AWQ-int4 準確率最高**（91.7%，+8.4 pp vs 3B FP16），延遲 3961 ms（+30%）。若 VRAM 允許，7B 是精度優先的最佳選擇。
-
-> 評測採用 bi-encoder reranking + cap=50，準確率以 **model_triples**（模型實際收到的 triples）的 answer 欄位計算（2026-05-12）。
-
----
-
-## 十五、Triple Reranking 策略比較
-
-### 背景
-
-Graph traversal 對 q06（interlock 查詢）會回傳 ~48 條 triples，但關鍵的 INTERLOCK_WITH triple 排在第 47 位。若直接截取前 N 條，模型永遠看不到它。Reranking 可將最相關的 triple 排到前面，並擴大截取上限。
-
-### R / A 指標說明
-
-- **R（Retrieval）**：預期關鍵字出現在模型實際收到的 triples（`model_triples`）中的比例
-- **A（Answer）**：預期關鍵字出現在模型回答（`answer`）中的比例
-
-### 實驗結果（Qwen2.5-3B，10 道題，2026-05-12）
-
-| 方法 | cap | R | A | avg 延遲 |
-|------|-----|---|---|---------|
-| 無 reranking（原始） | 25 | ~71%\* | 71% | 2683 ms |
-| Bi-encoder cosine | 25 | 92% | 71% | 2506 ms |
-| BM25 + Entity boost | 25 | 92% | 63% | 2718 ms |
-| Cross-encoder（BGE） | 50 | 100% | 79% | 22618 ms 🔴 |
-| BM25 + Entity boost | 50 | 100% | 67% | 2554 ms |
-| **Bi-encoder cosine** | **50** | **100%** | **83%** | **3012 ms** ✅ |
-
-\* 原始 R 是對全部 triples 計算（含模型未看到的），實際模型可見 R 約 71%。
-
-### 結論
-
-- **Bi-encoder cap=50 是最佳組合**：Retrieval 達 100%、Answer 83%、延遲 3012 ms（+329 ms vs cap=25）
-- **cap 的影響大於排序演算法的選擇**：從 25 → 50 讓 Answer 從 71% → 83%；換 BM25 或 Cross-encoder 在 cap=25 反而退步
-- **Cross-encoder（BGE）**準確率不錯（79%）但延遲爆炸（22 秒），不適合 online serving
-- **BM25 的問題**：中文問題 + 英文 triple 的跨語言場景中，BM25 keyword 匹配效果不如 embedding 語意相似度
-- 剩下的 4/24 answer 失敗屬於 3B 模型 generation 上限，reranking 無法進一步改善
 
 ---
 
