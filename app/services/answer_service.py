@@ -15,7 +15,6 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 """
 
 import logging
-import math
 
 from app.services.llm_client import chat_completion
 
@@ -110,4 +109,6 @@ def generate_answer(
         return chat_completion(prompt, temperature=0.0, max_tokens=512), model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
-        return _LLM_ERROR_ANSWER, model_triples
+        # Return empty model_triples: the LLM never received them, so callers
+        # should not score them as evidence the model actually saw.
+        return _LLM_ERROR_ANSWER, []

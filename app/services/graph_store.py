@@ -43,6 +43,9 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
         return []
 
     driver = _get_driver()
+    # hop is validated as int (1-4) by AskRequest; explicit cast prevents any
+    # future code path from accidentally passing a string here.
+    hop = int(hop)
     query = f"""
     MATCH p=(n)-[*1..{hop}]-(m)
     WHERE n.id IN $ents

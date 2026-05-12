@@ -82,7 +82,6 @@ services:
       HF_HUB_OFFLINE: "1"
 
     volumes:
-      - ./:/workspace
       - /home/jimmy/models:/llm:ro
 
     ports:

@@ -51,10 +51,6 @@ def extract_candidate_tokens(text: str) -> list[str]:
     return result
 
 
-# Backward-compatible alias (used by candidate_entities.py)
-def extract_uppercase_tokens(text: str) -> list[str]:
-    return extract_candidate_tokens(text)
-
 
 # SOP document ID pattern: SOP_Etch_001, SOP_Pump_002, SOP_Vent_003, …
 _SOP_DOC_ID = re.compile(r"\bSOP_[A-Za-z0-9]+_[A-Za-z0-9]+\b")

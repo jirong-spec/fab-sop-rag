@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict
 # ── Request / Response for POST /v1/ask ──────────────────────────────────────
 
 class AskRequest(BaseModel):
-    question: str = Field(..., description="使用者提問")
+    question: str = Field(..., min_length=1, max_length=1000, description="使用者提問")
     enable_guards: bool = Field(True, description="是否啟用 guardrails")
     debug: bool = Field(False, description="是否回傳 debug 資訊")
     max_hop: int = Field(2, ge=1, le=4, description="Graph 展開跳數")
@@ -37,9 +37,6 @@ class AskResponse(BaseModel):
     status: str = Field(..., description="answered | blocked")
     answer: str
     entities: list[str] = Field(default_factory=list, description="用於 graph 查詢的實體")
-    candidate_entities: list[str] = Field(
-        default_factory=list, description="從 vector 文件中提取的候選實體"
-    )
     evidence_triples: list[str] = Field(default_factory=list, description="圖譜三元組（graph traversal 全部結果）")
     model_triples: list[str] = Field(default_factory=list, description="實際傳入 LLM 的三元組（rerank + cap 後）")
     source_docs: list[str] = Field(
