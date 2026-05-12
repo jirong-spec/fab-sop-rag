@@ -74,7 +74,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
             )
 
     # ── Generation ────────────────────────────────────────────────────────────
-    answer = generate_answer(question, triples)
+    answer, model_triples = generate_answer(question, triples, entities=entities)
     logger.info("Answer generated | preview=%r", answer[:80])
 
     # ── Output Guard ──────────────────────────────────────────────────────────
@@ -105,6 +105,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
         entities=entities,
         candidate_entities=entities,
         evidence_triples=triples,
+        model_triples=model_triples,
         source_docs=extract_source_docs(triples),
         guardrail_results=guardrail_results,
         reasoning_type=reasoning_type,

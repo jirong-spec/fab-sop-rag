@@ -10,14 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
+def _get_embeddings() -> HuggingFaceEmbeddings:
+    """Lazy-init the embedding model; shared by vector store and answer reranker."""
+    logger.info("Loading embedding model: %s", settings.embedding_model)
+    return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+
+
+@lru_cache(maxsize=1)
 def _get_vector_store() -> Chroma:
     """Lazy-init the vector store; cached after first call."""
-    logger.info("Loading embedding model: %s", settings.embedding_model)
-    emb = HuggingFaceEmbeddings(model_name=settings.embedding_model)
     logger.info("Opening Chroma store at: %s", settings.chroma_dir)
     return Chroma(
         persist_directory=settings.chroma_dir,
-        embedding_function=emb,
+        embedding_function=_get_embeddings(),
         collection_name="sop_docs",
     )
 

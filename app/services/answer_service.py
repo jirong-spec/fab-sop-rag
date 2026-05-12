@@ -15,10 +15,35 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 """
 
 import logging
+import math
 
 from app.services.llm_client import chat_completion
 
 logger = logging.getLogger(__name__)
+
+
+def _score_triples(
+    question: str, triples: list[str], entities: list[str] | None = None
+) -> list[tuple[int, str]]:
+    """
+    Rank triples by cosine similarity (bi-encoder) to the question.
+    Scores are shown as percentages so the LLM can weigh relevance.
+    """
+    from app.services.vector_store import _get_embeddings
+    emb = _get_embeddings()
+    q_vec = emb.embed_query(question)
+    t_vecs = emb.embed_documents(triples)
+
+    def cosine(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm = (sum(x * x for x in a) ** 0.5) * (sum(x * x for x in b) ** 0.5)
+        return dot / norm if norm else 0.0
+
+    scored = sorted(
+        [(cosine(q_vec, tv), t) for tv, t in zip(t_vecs, triples)],
+        reverse=True,
+    )
+    return [(round(score * 100), triple) for score, triple in scored]
 
 _NO_INFO_ANSWER = "【查詢結果】此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
 _LLM_ERROR_ANSWER = "（LLM 服務暫時無法使用，請稍後再試）"
@@ -50,7 +75,7 @@ _PROMPT_TEMPLATE = """\
 8. 只有在圖譜中完全找不到任何相關關係時，才回答：「查詢結果：此問題不在目前 SOP 圖譜涵蓋範圍。」否則請根據圖譜回答。
 9. 使用繁體中文，回答請簡潔、結構化（可用條列式說明步驟）；引用圖譜中的節點 ID 時直接使用原始英文 ID，不要翻譯
 
-【SOP 知識圖譜關係】
+【SOP 知識圖譜關係】（已依與問題的相關性由高到低排列，括號內數字為相關度百分比，優先使用相關度高的關係作答）
 {context}
 
 【工程師問題】
@@ -59,23 +84,30 @@ _PROMPT_TEMPLATE = """\
 【查詢結果】"""
 
 
-def generate_answer(question: str, triples: list[str]) -> str:
+def generate_answer(
+    question: str, triples: list[str], entities: list[str] | None = None
+) -> tuple[str, list[str]]:
     """
     Generate a grounded SOP answer from graph triples.
+
+    Returns (answer, model_triples) where model_triples is the subset actually
+    passed to the LLM (after rerank + cap). This lets callers distinguish what
+    the model saw from the full evidence_triples returned by graph traversal.
 
     Returns the fixed no-info phrase when triples is empty — this is treated
     as a grounded response by guard_grounding (no hallucinated content).
     """
     if not triples:
-        return _NO_INFO_ANSWER
+        return _NO_INFO_ANSWER, []
 
-    # Cap at 25 triples to stay within the LLM's context window.
-    # Graph traversal returns the most-connected nodes first, so the
-    # most relevant triples tend to appear near the top.
-    context = "\n".join(triples[:25])
+    # Rank triples by relevance to the question and annotate each with a
+    # percentage score so the LLM can focus on the most relevant ones.
+    scored = _score_triples(question, triples[:50], entities=entities)
+    model_triples = [triple for _, triple in scored]
+    context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
     try:
-        return chat_completion(prompt, temperature=0.0, max_tokens=512)
+        return chat_completion(prompt, temperature=0.0, max_tokens=512), model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
-        return _LLM_ERROR_ANSWER
+        return _LLM_ERROR_ANSWER, model_triples

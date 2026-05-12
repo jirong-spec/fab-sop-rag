@@ -57,9 +57,11 @@ def score_response(resp: dict, expected: dict) -> dict:
             "is_block_query": True,
         }
 
-    # Retrieval score: keywords found in evidence_triples (did the graph/vector store
-    # fetch the right context?).
-    evidence_text = " ".join(resp.get("evidence_triples", []))
+    # Retrieval score: keywords found in model_triples — the triples actually passed
+    # to the LLM (after rerank + cap). Falls back to evidence_triples for baseline
+    # pipeline which has no model_triples field.
+    model_triples = resp.get("model_triples") or resp.get("evidence_triples", [])
+    evidence_text = " ".join(model_triples)
     retrieval_hits = sum(1 for kw in keywords if kw.lower() in evidence_text.lower())
 
     # Answer score: keywords found only in the model's generated answer (did the
@@ -346,6 +348,7 @@ def _run_live(queries: list[dict]) -> list[dict]:
                 "latency_ms": g_ms,
                 "answer": gr.answer,
                 "evidence_triples": gr.evidence_triples,
+                "model_triples": gr.model_triples,
                 "entities": gr.entities,
             },
             "baseline": {

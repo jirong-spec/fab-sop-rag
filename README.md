@@ -963,7 +963,41 @@ Live 結果存放於 `data/eval_results/live_baseline_vs_graph.json`。
 
 ---
 
-## 十五、架構說明
+## 十五、Triple Reranking 策略比較
+
+### 背景
+
+Graph traversal 對 q06（interlock 查詢）會回傳 ~48 條 triples，但關鍵的 INTERLOCK_WITH triple 排在第 47 位。若直接截取前 N 條，模型永遠看不到它。Reranking 可將最相關的 triple 排到前面，並擴大截取上限。
+
+### R / A 指標說明
+
+- **R（Retrieval）**：預期關鍵字出現在模型實際收到的 triples（`model_triples`）中的比例
+- **A（Answer）**：預期關鍵字出現在模型回答（`answer`）中的比例
+
+### 實驗結果（Qwen2.5-3B，10 道題，2026-05-12）
+
+| 方法 | cap | R | A | avg 延遲 |
+|------|-----|---|---|---------|
+| 無 reranking（原始） | 25 | ~71%\* | 71% | 2683 ms |
+| Bi-encoder cosine | 25 | 92% | 71% | 2506 ms |
+| BM25 + Entity boost | 25 | 92% | 63% | 2718 ms |
+| Cross-encoder（BGE） | 50 | 100% | 79% | 22618 ms 🔴 |
+| BM25 + Entity boost | 50 | 100% | 67% | 2554 ms |
+| **Bi-encoder cosine** | **50** | **100%** | **83%** | **3012 ms** ✅ |
+
+\* 原始 R 是對全部 triples 計算（含模型未看到的），實際模型可見 R 約 71%。
+
+### 結論
+
+- **Bi-encoder cap=50 是最佳組合**：Retrieval 達 100%、Answer 83%、延遲 3012 ms（+329 ms vs cap=25）
+- **cap 的影響大於排序演算法的選擇**：從 25 → 50 讓 Answer 從 71% → 83%；換 BM25 或 Cross-encoder 在 cap=25 反而退步
+- **Cross-encoder（BGE）**準確率不錯（79%）但延遲爆炸（22 秒），不適合 online serving
+- **BM25 的問題**：中文問題 + 英文 triple 的跨語言場景中，BM25 keyword 匹配效果不如 embedding 語意相似度
+- 剩下的 4/24 answer 失敗屬於 3B 模型 generation 上限，reranking 無法進一步改善
+
+---
+
+## 十六、架構說明
 
 ```
 fab-sop-rag/
