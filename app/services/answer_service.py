@@ -44,7 +44,7 @@ def _score_triples(
     )
     return [(round(score * 100), triple) for score, triple in scored]
 
-_NO_INFO_ANSWER = "【查詢結果】此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
+_NO_INFO_ANSWER = "此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
 _LLM_ERROR_ANSWER = "（LLM 服務暫時無法使用，請稍後再試）"
 
 _PROMPT_TEMPLATE = """\
@@ -80,7 +80,26 @@ _PROMPT_TEMPLATE = """\
 【工程師問題】
 {question}
 
-【查詢結果】"""
+請依照以下格式輸出，不得省略任何段落：
+
+【分析】
+逐一檢視每條圖譜關係是否與問題相關，明確列出：
+- 選用哪些關係（邊類型）及其完整屬性（如 required_status、trigger、action、reason、interlock_id）
+- 排除哪些關係，並簡述原因
+
+【查詢結果】
+根據上方分析，給出最終結構化答案。"""
+
+
+_SCRATCHPAD_MARKER = "【查詢結果】"
+
+
+def _extract_answer(raw: str) -> str:
+    """Extract the final answer after the scratchpad marker."""
+    idx = raw.rfind(_SCRATCHPAD_MARKER)
+    if idx == -1:
+        return raw.strip()
+    return raw[idx + len(_SCRATCHPAD_MARKER):].strip()
 
 
 def generate_answer(
@@ -116,7 +135,12 @@ def generate_answer(
     context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
     try:
-        return chat_completion(prompt, temperature=0.0, max_tokens=512), model_triples
+        # max_tokens bumped to 800 to accommodate the scratchpad 【分析】section
+        # before the final 【查詢結果】answer (~300 tokens scratchpad + ~500 answer).
+        raw = chat_completion(prompt, temperature=0.0, max_tokens=800)
+        answer = _extract_answer(raw)
+        logger.debug("CoT scratchpad length=%d answer_length=%d", len(raw), len(answer))
+        return answer, model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
         # Return empty model_triples: the LLM never received them, so callers
