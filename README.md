@@ -246,6 +246,22 @@ scored = [t for t in scored_all if t[0] >= threshold][:100]
 
 與固定 cap=50 相比，動態 cap 減少雜訊：context 更乾淨 → 模型注意力更集中 → Answer 從 83% → **88%**（3B），延遲 -123 ms。7B 準確率持平 91.7%，延遲少 470 ms（-12%）。
 
+### Chain-of-Thought Prompt 實驗（Qwen2.5-7B，2026-05-13）
+
+Retrieval 達到 100% 之後，Answer 仍有 2 題失敗（q05 cross_doc A⚠ 1/2、q06 interlock A⚠ 2/3）。兩題共同特徵：R✅ 但 LLM 沒有完整提取 triple 的屬性值（`reason`、`interlock_id`、`trigger`、`action`）。針對此 **generation 瓶頸**測試兩種 CoT 方法：
+
+| 方法 | 做法 | Answer | 延遲 | 說明 |
+|------|------|--------|------|------|
+| **無 CoT（基準）** | 原始 prompt，直接輸出 `【查詢結果】` | 91.7% (22/24) | 3667 ms | — |
+| **方法 B：顯式 scratchpad** | 強制輸出 `【分析】` 段落，再輸出 `【查詢結果】`，API 端 parse 取答案；max_tokens 512 → 800 | 95.8% (23/24) | 6217 ms | q05 修復；q06 仍 A⚠，scratchpad 佔用 ~300 tokens 壓縮答案空間 |
+| **方法 A：Implicit CoT** | prompt 加一行「先在心中核對所有屬性再輸出答案」；max_tokens 維持 512 | **100% (24/24)** | **4067 ms** | q05 + q06 全修復；無 parse 邏輯，500ms overhead |
+
+**方法 A 勝出的原因：**
+
+- 方法 B 的顯式 scratchpad 需要 ~300 tokens 描述推理過程，加上 max_tokens=800 下的 KV-cache overhead，實際留給答案的空間反而比 512 更少，導致 q06 的 `IL-E001` 仍被截斷
+- 方法 A 的 implicit CoT 讓模型**在 decode 過程中內部推理**，所有 512 tokens 全部輸出答案，延遲只多 400ms
+- 結論：對 7B 量化模型，**不可見的推理（implicit）比可見的推理（explicit scratchpad）更有效**，因為 token budget 全給答案用
+
 ### 結論
 
 - **最終組合：Bi-encoder + Edge enrichment + 動態 cap + implicit CoT**：R 100%、A **100%**（7B）、延遲 4067 ms
