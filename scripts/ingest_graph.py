@@ -35,13 +35,13 @@ def _load_json(path: Path) -> list[dict]:
         return json.load(fh)
 
 
-def _merge_nodes(session, nodes: list[dict]) -> None:
+def _merge_nodes(session, nodes: list[dict], source_file: str) -> None:
     for node in nodes:
         label = node["label"]
-        props = node["properties"]
+        props = dict(node["properties"])
+        props["source_file"] = source_file
         node_id = props["id"]
 
-        # MERGE on the id property, then SET all remaining properties
         cypher = (
             f"MERGE (n:{label} {{id: $id}}) "
             "SET n += $props "
@@ -52,14 +52,15 @@ def _merge_nodes(session, nodes: list[dict]) -> None:
         logger.info("MERGE node  (%s {id: %r})", label, record["id"] if record else node_id)
 
 
-def _merge_edges(session, edges: list[dict]) -> None:
+def _merge_edges(session, edges: list[dict], source_file: str) -> None:
     for edge in edges:
         rel_type = edge["type"]
         from_label = edge["from_label"]
         from_id = edge["from_id"]
         to_label = edge["to_label"]
         to_id = edge["to_id"]
-        props = edge.get("properties", {})
+        props = dict(edge.get("properties", {}))
+        props["source_file"] = source_file
 
         cypher = (
             f"MATCH (a:{from_label} {{id: $from_id}}) "
@@ -106,10 +107,10 @@ def main() -> None:
     try:
         with driver.session() as session:
             logger.info("--- Merging %d nodes ---", len(nodes))
-            _merge_nodes(session, nodes)
+            _merge_nodes(session, nodes, source_file=nodes_path.name)
 
             logger.info("--- Merging %d edges ---", len(edges))
-            _merge_edges(session, edges)
+            _merge_edges(session, edges, source_file=edges_path.name)
 
         logger.info("Graph seed complete.")
     finally:

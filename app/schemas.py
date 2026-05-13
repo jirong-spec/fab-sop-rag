@@ -30,6 +30,10 @@ class DebugInfo(BaseModel):
     context: str = Field(..., description="傳入 LLM 的 context 字串")
     llm_raw_output: str = Field(..., description="LLM 原始輸出")
     retrieval_count: int = Field(..., description="檢索到的三元組數量")
+    stage_latencies: dict[str, int] = Field(
+        default_factory=dict,
+        description="各 pipeline 階段耗時 (ms)：guard_injection, guard_topic, retrieval, generation, guard_grounding",
+    )
 
 
 class AskResponse(BaseModel):
@@ -54,6 +58,22 @@ class AskResponse(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     request_id: str = Field("-", description="X-Request-ID correlation token")
     debug: Optional[DebugInfo] = None
+
+
+# ── POST /v1/ingest ───────────────────────────────────────────────────────────
+
+class IngestRequest(BaseModel):
+    source_file: str = Field(..., min_length=1, max_length=200, description="來源檔案名稱，用於 graph versioning")
+    nodes: list[dict] = Field(..., description="節點列表，格式同 data/graph_seed/nodes.json")
+    edges: list[dict] = Field(..., description="邊列表，格式同 data/graph_seed/edges.json")
+
+
+class IngestResponse(BaseModel):
+    status: str = Field(..., description="ok | error")
+    nodes_merged: int = Field(..., description="成功 MERGE 的節點數")
+    edges_merged: int = Field(..., description="成功 MERGE 的邊數")
+    edges_skipped: int = Field(..., description="因節點不存在而跳過的邊數")
+    detail: Optional[str] = None
 
 
 # ── GET /v1/health ────────────────────────────────────────────────────────────

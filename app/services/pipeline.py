@@ -28,6 +28,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
     t0 = time.perf_counter()
     question = req.question
     guardrail_results: list[GuardrailResult] = []
+    stage_latencies: dict[str, int] = {}
 
     logger.info(
         "Pipeline start | question=%r | guards=%s | hop=%d | top_k=%d",
@@ -39,20 +40,26 @@ def run_pipeline(req: AskRequest) -> AskResponse:
 
     # ── Input Guards ─────────────────────────────────────────────────────────
     if req.enable_guards:
+        _ts = time.perf_counter()
         inj = guard_injection(question)
+        stage_latencies["guard_injection"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(inj)
         logger.info("Guard[injection] pass=%s reason=%s", inj.passed, inj.reason)
         if not inj.passed:
             return _blocked(req, guardrail_results, "blocked_injection", inj.reason, t0)
 
+        _ts = time.perf_counter()
         topic = guard_topic(question)
+        stage_latencies["guard_topic"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(topic)
         logger.info("Guard[topic] pass=%s reason=%s", topic.passed, topic.reason)
         if not topic.passed:
             return _blocked(req, guardrail_results, "blocked_off_topic", topic.reason, t0)
 
     # ── Retrieval ─────────────────────────────────────────────────────────────
+    _ts = time.perf_counter()
     entities, triples = retrieve(question, top_k=req.top_k, max_hop=req.max_hop)
+    stage_latencies["retrieval"] = int((time.perf_counter() - _ts) * 1000)
     logger.info(
         "Retrieval done | entities=%s | triples=%d", entities, len(triples)
     )
@@ -74,7 +81,9 @@ def run_pipeline(req: AskRequest) -> AskResponse:
             )
 
     # ── Generation ────────────────────────────────────────────────────────────
+    _ts = time.perf_counter()
     answer, model_triples = generate_answer(question, triples, entities=entities)
+    stage_latencies["generation"] = int((time.perf_counter() - _ts) * 1000)
     logger.info("Answer generated | preview=%r", answer[:80])
 
     # ── Output Guard ──────────────────────────────────────────────────────────
@@ -82,7 +91,9 @@ def run_pipeline(req: AskRequest) -> AskResponse:
     confidence = 1.0
 
     if req.enable_guards:
+        _ts = time.perf_counter()
         gr = guard_grounding(answer, triples)
+        stage_latencies["guard_grounding"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(gr)
         logger.info("Guard[grounding] pass=%s reason=%s", gr.passed, gr.reason)
         if not gr.passed:
@@ -91,12 +102,13 @@ def run_pipeline(req: AskRequest) -> AskResponse:
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
-        "Pipeline done | status=answered | reasoning=%s | latency_ms=%d",
+        "Pipeline done | status=answered | reasoning=%s | latency_ms=%d stages=%s",
         reasoning_type,
         latency_ms,
+        stage_latencies,
     )
 
-    debug = _make_debug(req, triples, answer) if req.debug else None
+    debug = _make_debug(req, triples, answer, stage_latencies) if req.debug else None
 
     return AskResponse(
         question=question,
@@ -132,7 +144,7 @@ def _blocked(
     )
     entities = entities or []
     triples = triples or []
-    debug = _make_debug(req, triples, "") if req.debug else None
+    debug = _make_debug(req, triples, "", {}) if req.debug else None
     return AskResponse(
         question=req.question,
         status="blocked",
@@ -146,9 +158,15 @@ def _blocked(
     )
 
 
-def _make_debug(req: AskRequest, triples: list[str], llm_output: str) -> DebugInfo:
+def _make_debug(
+    req: AskRequest,
+    triples: list[str],
+    llm_output: str,
+    stage_latencies: dict[str, int] | None = None,
+) -> DebugInfo:
     return DebugInfo(
         context="\n".join(triples),
         llm_raw_output=llm_output,
         retrieval_count=len(triples),
+        stage_latencies=stage_latencies or {},
     )

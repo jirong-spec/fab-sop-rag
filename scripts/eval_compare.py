@@ -26,8 +26,11 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Optional
+
+QUERY_TIMEOUT_SEC = 120  # per-query hard limit
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
@@ -329,37 +332,57 @@ def _run_live(queries: list[dict]) -> list[dict]:
         print(f"[WARNING] Pre-warm failed (non-fatal): {e}")
 
     results = []
-    for q in queries:
-        req = AskRequest(question=q["question"], enable_guards=True, top_k=4, max_hop=2)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        for q in queries:
+            req = AskRequest(question=q["question"], enable_guards=True, top_k=4, max_hop=2)
+            qid = q["id"]
 
-        t0 = time.perf_counter()
-        gr = run_pipeline(req)
-        g_ms = int((time.perf_counter() - t0) * 1000)
+            t0 = time.perf_counter()
+            fut = pool.submit(run_pipeline, req)
+            try:
+                gr = fut.result(timeout=QUERY_TIMEOUT_SEC)
+                g_ms = int((time.perf_counter() - t0) * 1000)
+                graph_entry = {
+                    "status": gr.status,
+                    "reasoning_type": gr.reasoning_type,
+                    "latency_ms": g_ms,
+                    "answer": gr.answer,
+                    "evidence_triples": gr.evidence_triples,
+                    "model_triples": gr.model_triples,
+                    "entities": gr.entities,
+                }
+            except FuturesTimeoutError:
+                g_ms = QUERY_TIMEOUT_SEC * 1000
+                print(f"[WARNING] Graph pipeline timed out for {qid} after {QUERY_TIMEOUT_SEC}s")
+                graph_entry = {
+                    "status": "error", "reasoning_type": "timeout", "latency_ms": g_ms,
+                    "answer": f"[TIMEOUT after {QUERY_TIMEOUT_SEC}s]",
+                    "evidence_triples": [], "model_triples": [], "entities": [],
+                }
 
-        t0 = time.perf_counter()
-        br = run_baseline_pipeline(req)
-        b_ms = int((time.perf_counter() - t0) * 1000)
+            t0 = time.perf_counter()
+            fut = pool.submit(run_baseline_pipeline, req)
+            try:
+                br = fut.result(timeout=QUERY_TIMEOUT_SEC)
+                b_ms = int((time.perf_counter() - t0) * 1000)
+                baseline_entry = {
+                    "status": br.status,
+                    "reasoning_type": br.reasoning_type,
+                    "latency_ms": b_ms,
+                    "answer": br.answer,
+                    "evidence_triples": br.evidence_triples,
+                    "entities": br.entities,
+                }
+            except FuturesTimeoutError:
+                b_ms = QUERY_TIMEOUT_SEC * 1000
+                print(f"[WARNING] Baseline pipeline timed out for {qid} after {QUERY_TIMEOUT_SEC}s")
+                baseline_entry = {
+                    "status": "error", "reasoning_type": "timeout", "latency_ms": b_ms,
+                    "answer": f"[TIMEOUT after {QUERY_TIMEOUT_SEC}s]",
+                    "evidence_triples": [], "entities": [],
+                }
 
-        results.append({
-            "id": q["id"],
-            "graph": {
-                "status": gr.status,
-                "reasoning_type": gr.reasoning_type,
-                "latency_ms": g_ms,
-                "answer": gr.answer,
-                "evidence_triples": gr.evidence_triples,
-                "model_triples": gr.model_triples,
-                "entities": gr.entities,
-            },
-            "baseline": {
-                "status": br.status,
-                "reasoning_type": br.reasoning_type,
-                "latency_ms": b_ms,
-                "answer": br.answer,
-                "evidence_triples": br.evidence_triples,
-                "entities": br.entities,
-            },
-        })
+            results.append({"id": qid, "graph": graph_entry, "baseline": baseline_entry})
     return results
 
 

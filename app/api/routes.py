@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 
 from app.auth import require_api_key
 from app.config import settings
-from app.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse, ServiceStatus
+from app.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse, IngestRequest, IngestResponse, ServiceStatus
 from app.services.pipeline import run_pipeline
 from app.utils.context import get_request_id
 
@@ -176,3 +176,87 @@ async def ask(
     return JSONResponse(
         content=result.model_dump(by_alias=True, exclude_none=True)
     )
+
+
+# ── SOP knowledge graph ingest ────────────────────────────────────────────────
+
+def _run_ingest(req: IngestRequest) -> IngestResponse:
+    """Merge nodes and edges into Neo4j, tagging each with source_file."""
+    from app.services.graph_store import _get_driver
+
+    driver = _get_driver()
+    nodes_merged = 0
+    edges_merged = 0
+    edges_skipped = 0
+
+    with driver.session() as session:
+        for node in req.nodes:
+            label = node.get("label", "Node")
+            props = dict(node.get("properties", {}))
+            props["source_file"] = req.source_file
+            node_id = props.get("id", "")
+            cypher = (
+                f"MERGE (n:{label} {{id: $id}}) "
+                "SET n += $props "
+                "RETURN n.id AS id"
+            )
+            session.run(cypher, id=node_id, props=props)
+            nodes_merged += 1
+
+        for edge in req.edges:
+            rel_type = edge.get("type", "RELATES_TO")
+            from_label = edge.get("from_label", "")
+            from_id = edge.get("from_id", "")
+            to_label = edge.get("to_label", "")
+            to_id = edge.get("to_id", "")
+            props = dict(edge.get("properties", {}))
+            props["source_file"] = req.source_file
+
+            match_clause = (
+                f"MATCH (a{':' + from_label if from_label else ''} {{id: $from_id}}) "
+                f"MATCH (b{':' + to_label if to_label else ''} {{id: $to_id}}) "
+            )
+            cypher = (
+                match_clause
+                + f"MERGE (a)-[r:{rel_type}]->(b) "
+                + "SET r += $props "
+                + "RETURN type(r) AS rel"
+            )
+            result = session.run(cypher, from_id=from_id, to_id=to_id, props=props)
+            if result.single():
+                edges_merged += 1
+            else:
+                edges_skipped += 1
+
+    logger.info(
+        "Ingest complete | source=%s nodes=%d edges=%d skipped=%d",
+        req.source_file, nodes_merged, edges_merged, edges_skipped,
+    )
+    return IngestResponse(
+        status="ok",
+        nodes_merged=nodes_merged,
+        edges_merged=edges_merged,
+        edges_skipped=edges_skipped,
+    )
+
+
+@v1_router.post(
+    "/ingest",
+    summary="Ingest SOP nodes and edges into the knowledge graph",
+    description=(
+        "Merge new SOP nodes and edges into Neo4j. "
+        "Each node and edge is tagged with `source_file` for lifecycle tracking. "
+        "Safe to re-run: existing nodes/edges are updated via MERGE, not duplicated."
+    ),
+    response_model=IngestResponse,
+)
+async def ingest(
+    req: IngestRequest,
+    _: None = Depends(require_api_key),
+) -> IngestResponse:
+    req_id = get_request_id()
+    logger.info(
+        "POST /v1/ingest | source=%s nodes=%d edges=%d req_id=%s",
+        req.source_file, len(req.nodes), len(req.edges), req_id,
+    )
+    return await asyncio.to_thread(_run_ingest, req)
