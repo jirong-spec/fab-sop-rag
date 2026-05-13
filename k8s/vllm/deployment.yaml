@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: fab-sop
+  labels:
+    app: vllm
+spec:
+  replicas: 1    # one GPU pod per physical GPU
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      # Schedule only on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.6.3.post1
+          ports:
+            - containerPort: 8000
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "0"
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          args:
+            - "--model"
+            - "/llm/Qwen2.5-7B-Instruct-AWQ-int4"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--served-model-name"
+            - "Qwen2.5-7B-Instruct-AWQ-int4"
+            - "--device"
+            - "cuda"
+            - "--max-model-len"
+            - "4096"
+            - "--kv-cache-dtype"
+            - "auto"
+            - "--tensor-parallel-size"
+            - "1"
+            - "--gpu-memory-utilization"
+            - "0.8"
+          volumeMounts:
+            - name: model-store
+              mountPath: /llm
+              readOnly: true
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+              memory: "20Gi"
+            requests:
+              nvidia.com/gpu: "1"
+              memory: "16Gi"
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8000
+            initialDelaySeconds: 300   # model load takes ~5 min
+            periodSeconds: 30
+            failureThreshold: 20
+      volumes:
+        - name: model-store
+          hostPath:
+            path: /home/jimmy/models    # GPU node local SSD
+            type: Directory

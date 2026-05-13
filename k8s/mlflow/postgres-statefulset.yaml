@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: fab-sop
+spec:
+  serviceName: postgres-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: mlflow
+            - name: POSTGRES_USER
+              value: mlflow
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fab-sop-secret
+                  key: MLFLOW_DB_PASSWORD
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+  volumeClaimTemplates:
+    - metadata:
+        name: pg-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: fab-sop
+spec:
+  selector:
+    app: postgres
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: 5432

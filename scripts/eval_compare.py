@@ -32,6 +32,13 @@ from typing import Optional
 
 QUERY_TIMEOUT_SEC = 120  # per-query hard limit
 
+# MLflow is optional — eval still works without it
+try:
+    import mlflow
+    _MLFLOW_AVAILABLE = True
+except ImportError:
+    _MLFLOW_AVAILABLE = False
+
 # ── Path setup ────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -523,12 +530,100 @@ def render_report(queries: list[dict], results: dict) -> str:
     return "\n".join(lines)
 
 
+# ── MLflow logging ────────────────────────────────────────────────────────────
+
+def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict, mode: str) -> None:
+    """Log eval results to MLflow as a single run under experiment 'fab-sop-eval'."""
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment("fab-sop-eval")
+
+    # Read pipeline config for param logging (best-effort)
+    params: dict = {"eval_mode": mode}
+    try:
+        from app.config import settings
+        params["model"] = getattr(settings, "openai_model", "unknown")
+        params["embedding_model"] = getattr(settings, "embedding_model", "unknown")
+    except Exception:
+        pass
+    try:
+        from app.services.answer_service import _PROMPT_TEMPLATE
+        params["cot_method"] = "implicit" if "心中逐一核對" in _PROMPT_TEMPLATE else "none"
+    except Exception:
+        pass
+    params["reranker"] = "bi-encoder-cosine"
+    params["cap_strategy"] = "dynamic_top50pct"
+    params["query_timeout_sec"] = QUERY_TIMEOUT_SEC
+
+    # Compute aggregate metrics
+    g_kw_hits = g_kw_total = 0
+    g_ret_hits = g_ret_total = 0
+    g_latencies = []
+    mh_g_hits = mh_g_total = 0
+    per_query_metrics: dict = {}
+
+    for q in queries:
+        qid = q["id"]
+        res = results.get(qid, {})
+        g_resp = res.get("graph", {})
+        g_score = score_response(g_resp, q)
+        g_ms = g_resp.get("latency_ms", 0)
+        g_latencies.append(g_ms)
+
+        if not g_score["is_block_query"]:
+            gh, gt = g_score["keyword_hits"], g_score["keyword_total"]
+            grh = g_score["retrieval_hits"]
+            g_kw_hits += gh
+            g_kw_total += gt
+            g_ret_hits += grh
+            g_ret_total += gt
+            if qid in MULTIHOP_IDS:
+                mh_g_hits += gh
+                mh_g_total += gt
+            per_query_metrics[f"{qid}_retrieval"] = grh / gt if gt else 0
+            per_query_metrics[f"{qid}_answer"] = gh / gt if gt else 0
+            per_query_metrics[f"{qid}_latency_ms"] = g_ms
+
+    metrics = {
+        "retrieval_rate": g_ret_hits / g_ret_total if g_ret_total else 0,
+        "answer_rate": g_kw_hits / g_kw_total if g_kw_total else 0,
+        "multihop_answer_rate": mh_g_hits / mh_g_total if mh_g_total else 0,
+        "avg_latency_ms": sum(g_latencies) / len(g_latencies) if g_latencies else 0,
+        **per_query_metrics,
+    }
+
+    with mlflow.start_run():
+        mlflow.log_params(params)
+        mlflow.log_metrics(metrics)
+        # Log prompt template as artifact for reproducibility
+        try:
+            from app.services.answer_service import _PROMPT_TEMPLATE
+            import tempfile, os
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+                f.write(_PROMPT_TEMPLATE)
+                tmp = f.name
+            mlflow.log_artifact(tmp, artifact_path="prompt")
+            os.unlink(tmp)
+        except Exception:
+            pass
+        # Log full results JSON
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump({"queries": queries, "results": results}, f, ensure_ascii=False, indent=2)
+            tmp = f.name
+        mlflow.log_artifact(tmp, artifact_path="eval_results")
+        os.unlink(tmp)
+
+    print(f"[INFO] MLflow run logged to {tracking_uri} (experiment: fab-sop-eval)")
+    print(f"[INFO]   retrieval={metrics['retrieval_rate']:.1%}  answer={metrics['answer_rate']:.1%}  avg_latency={metrics['avg_latency_ms']:.0f}ms")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Baseline RAG vs Graph RAG evaluation")
     parser.add_argument("--mock", action="store_true", help="Use pre-computed mock results (no services needed)")
     parser.add_argument("--output", type=str, default="", help="Save JSON results to this path")
+    parser.add_argument("--mlflow-uri", type=str, default="", help="MLflow tracking server URI (e.g. http://mlflow-svc:5000)")
     args = parser.parse_args()
 
     queries = json.loads(QUERIES_PATH.read_text(encoding="utf-8"))
@@ -543,6 +638,12 @@ def main() -> None:
 
     report = render_report(queries, results)
     print(report)
+
+    # ── MLflow logging ────────────────────────────────────────────────────────
+    if args.mlflow_uri and _MLFLOW_AVAILABLE:
+        _log_to_mlflow(args.mlflow_uri, queries, results, mode="mock" if args.mock else "live")
+    elif args.mlflow_uri and not _MLFLOW_AVAILABLE:
+        print("[WARNING] --mlflow-uri specified but mlflow package not installed; skipping.")
 
     if args.output:
         out_path = Path(args.output)

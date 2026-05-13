@@ -1,0 +1,47 @@
+# Weekly eval run every Monday 03:00 — logs results to MLflow
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: eval-weekly
+  namespace: fab-sop
+spec:
+  schedule: "0 3 * * 1"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: eval
+              image: fab-sop-rag-api:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - scripts/eval_compare.py
+                - --mlflow-uri
+                - http://mlflow-svc:5000
+              envFrom:
+                - configMapRef:
+                    name: fab-sop-config
+                - secretRef:
+                    name: fab-sop-secret
+              volumeMounts:
+                - name: chroma-data
+                  mountPath: /data/chroma
+                - name: hf-cache
+                  mountPath: /root/.cache/huggingface
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "2Gi"
+                limits:
+                  cpu: "2"
+                  memory: "4Gi"
+          volumes:
+            - name: chroma-data
+              persistentVolumeClaim:
+                claimName: chroma-pvc
+            - name: hf-cache
+              persistentVolumeClaim:
+                claimName: hf-cache-pvc
