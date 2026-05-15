@@ -3,9 +3,7 @@ import time
 
 from app.schemas import AskRequest, AskResponse, DebugInfo, GuardrailResult
 from app.services.guardrails import (
-    guard_injection,
     guard_topic,
-    guard_evidence,
     guard_grounding,
 )
 from app.services.retrieval_service import retrieve
@@ -20,10 +18,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
     Orchestrate the full guardrailed RAG pipeline.
 
     Flow:
-        Input → [guard_injection] → [guard_topic]
-             → Retrieval → [guard_evidence]
-             → Generation
-             → Output → [guard_grounding]
+        Input → [guard_topic] → Retrieval → Generation → Output → [guard_grounding]
     """
     t0 = time.perf_counter()
     question = req.question
@@ -38,16 +33,8 @@ def run_pipeline(req: AskRequest) -> AskResponse:
         req.top_k,
     )
 
-    # ── Input Guards ─────────────────────────────────────────────────────────
+    # ── Input Guard ──────────────────────────────────────────────────────────
     if req.enable_guards:
-        _ts = time.perf_counter()
-        inj = guard_injection(question)
-        stage_latencies["guard_injection"] = int((time.perf_counter() - _ts) * 1000)
-        guardrail_results.append(inj)
-        logger.info("Guard[injection] pass=%s reason=%s", inj.passed, inj.reason)
-        if not inj.passed:
-            return _blocked(req, guardrail_results, "blocked_injection", inj.reason, t0)
-
         _ts = time.perf_counter()
         topic = guard_topic(question)
         stage_latencies["guard_topic"] = int((time.perf_counter() - _ts) * 1000)
@@ -63,22 +50,6 @@ def run_pipeline(req: AskRequest) -> AskResponse:
     logger.info(
         "Retrieval done | entities=%s | triples=%d", entities, len(triples)
     )
-
-    # ── Retrieval Guard ───────────────────────────────────────────────────────
-    if req.enable_guards:
-        ev = guard_evidence(triples)
-        guardrail_results.append(ev)
-        logger.info("Guard[evidence] pass=%s reason=%s", ev.passed, ev.reason)
-        if not ev.passed:
-            return _blocked(
-                req,
-                guardrail_results,
-                "blocked_low_evidence",
-                ev.reason,
-                t0,
-                entities=entities,
-                triples=triples,
-            )
 
     # ── Generation ────────────────────────────────────────────────────────────
     _ts = time.perf_counter()

@@ -32,7 +32,7 @@ class DebugInfo(BaseModel):
     retrieval_count: int = Field(..., description="檢索到的三元組數量")
     stage_latencies: dict[str, int] = Field(
         default_factory=dict,
-        description="各 pipeline 階段耗時 (ms)：guard_injection, guard_topic, retrieval, generation, guard_grounding",
+        description="各 pipeline 階段耗時 (ms)：guard_topic, retrieval, generation, guard_grounding",
     )
 
 
