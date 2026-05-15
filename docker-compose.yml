@@ -92,13 +92,13 @@ services:
 
     command:
       - "--model"
-      - "/llm/Qwen2.5-3B-Instruct"
+      - "/llm/Qwen2.5-7B-Instruct-AWQ-int4"
       - "--host"
       - "0.0.0.0"
       - "--port"
       - "8000"
       - "--served-model-name"
-      - "Qwen2.5-3B-Instruct"
+      - "Qwen2.5-7B-Instruct-AWQ-int4"
       - "--device"
       - "cuda"
       - "--max-model-len"

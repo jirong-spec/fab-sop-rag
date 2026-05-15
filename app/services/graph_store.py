@@ -2,10 +2,19 @@ import logging
 from functools import lru_cache
 
 from neo4j import GraphDatabase, Driver
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_neo4j_retry = retry(
+    retry=retry_if_exception_type((ServiceUnavailable, SessionExpired)),
+    wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
 
 
 @lru_cache(maxsize=1)
@@ -55,9 +64,12 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
 
-    with driver.session() as session:
-        records = session.run(query, ents=entities)
-        for record in records:
+    @_neo4j_retry
+    def _query():
+        with driver.session() as session:
+            return list(session.run(query, ents=entities))
+
+    for record in _query():
             path = record["p"]
             for rel in path.relationships:
                 start_name = _node_label(rel.start_node)

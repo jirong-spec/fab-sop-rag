@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls ~/models/)",
+      "Read(//home/jimmy/models/**)",
+      "Bash(docker network *)",
+      "Bash(docker compose *)",
+      "Bash(curl -sf http://localhost:8000/health)",
+      "Bash(python scripts/benchmark_models.py)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(python3)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -m py_compile app/schemas.py app/api/routes.py scripts/eval_compare.py scripts/ingest_graph.py)",
+      "Bash(python3 -m py_compile scripts/eval_compare.py)",
+      "Bash(curl -sfL https://get.k3s.io)",
+      "Bash(sh -)",
+      "Bash(awk '{print $1}')",
+      "Bash(docker save *)",
+      "Bash(sudo k3s ctr images import -)"
+    ]
+  }
+}

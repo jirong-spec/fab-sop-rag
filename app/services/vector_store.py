@@ -1,8 +1,8 @@
 import logging
 from functools import lru_cache
 
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.config import settings
 
