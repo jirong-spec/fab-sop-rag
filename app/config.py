@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # For local dev without Docker: CHROMA_DIR=../lab1/chroma_store
     chroma_dir: str = "/data/chroma"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    reranker_model: str = ""  # if empty, falls back to embedding_model
 
     # Retrieval defaults
     default_max_hop: int = 2

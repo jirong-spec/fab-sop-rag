@@ -228,7 +228,7 @@ CROSS_DOC_DEPENDENCY  SOPDocument → SOPDocument
 def extract_nodes(content: str) -> list[dict]:
     prompt = _NODE_PROMPT.format(content=content)
     try:
-        raw = chat_completion(prompt, temperature=0.0, max_tokens=2048)
+        raw = chat_completion(prompt, temperature=0.0, max_tokens=1800)
     except RuntimeError as exc:
         logger.error("Node extraction LLM call failed: %s", exc)
         return []
@@ -250,7 +250,7 @@ def extract_edges(content: str, nodes: list[dict]) -> list[dict]:
     )
     prompt = _EDGE_PROMPT.format(content=content, node_list=node_list)
     try:
-        raw = chat_completion(prompt, temperature=0.0, max_tokens=2048)
+        raw = chat_completion(prompt, temperature=0.0, max_tokens=1800)
     except RuntimeError as exc:
         logger.error("Edge extraction LLM call failed: %s", exc)
         return []

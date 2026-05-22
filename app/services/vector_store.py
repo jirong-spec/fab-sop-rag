@@ -11,9 +11,20 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=1)
 def _get_embeddings() -> HuggingFaceEmbeddings:
-    """Lazy-init the embedding model; shared by vector store and answer reranker."""
+    """Lazy-init the Chroma embedding model (used for entity extraction)."""
     logger.info("Loading embedding model: %s", settings.embedding_model)
     return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+
+
+@lru_cache(maxsize=1)
+def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
+    """Lazy-init the reranker embedding model (used for graph triple scoring).
+
+    Falls back to the Chroma embedding model when RERANKER_MODEL is not set.
+    """
+    model = settings.reranker_model or settings.embedding_model
+    logger.info("Loading reranker model: %s", model)
+    return HuggingFaceEmbeddings(model_name=model)
 
 
 @lru_cache(maxsize=1)

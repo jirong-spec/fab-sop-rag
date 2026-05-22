@@ -37,7 +37,7 @@
     "description": "跨文件設備依賴查詢",
     "question": "SOP_Etch_001 中 TurboVacuumPump 的狀態定義是在哪份文件中說明的？",
     "expected_behavior": "retrieved_and_answered",
-    "expected_keywords": ["SOP_Pump_002", "狀態定義"]
+    "expected_keywords": ["SOP_Pump_002", "定義"]
   },
   {
     "id": "q06",

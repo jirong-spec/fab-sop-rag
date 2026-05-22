@@ -28,8 +28,8 @@ def _score_triples(
     Rank triples by cosine similarity (bi-encoder) to the question.
     Scores are shown as percentages so the LLM can weigh relevance.
     """
-    from app.services.vector_store import _get_embeddings
-    emb = _get_embeddings()
+    from app.services.vector_store import _get_reranker_embeddings
+    emb = _get_reranker_embeddings()
     q_vec = emb.embed_query(question)
     t_vecs = emb.embed_documents(triples)
 
@@ -69,7 +69,7 @@ _PROMPT_TEMPLATE = """\
 3. 若問題詢問步驟順序，請從 FIRST_STEP 出發，沿 NEXT_STEP 鏈依序列出所有步驟，並明確列出每個步驟的節點 ID
 4. 若問題詢問設備狀態要求，請使用 REQUIRES_STATUS 或 PRECONDITION 邊的 required_status 屬性回答，並逐一列出每台設備 ID 及其對應狀態值
 5. 若問題詢問「哪份文件定義了某設備狀態」，請直接引用 CROSS_DOC_DEPENDENCY 邊的 reason 屬性內容回答，例如：「依據圖譜，SOP_Pump_002 定義了 TurboVacuumPump 的狀態。」
-6. 若問題詢問 Interlock 條件，請明確引用圖譜中的 interlock_id、觸發條件（trigger）及執行動作（action），並點名相關設備節點 ID
+6. 若問題詢問 Interlock 條件，每條 INTERLOCK_WITH 邊必須依照下列格式回答：「來源設備 → 目標設備（interlock_id: XXX，觸發條件: XXX，動作: XXX）」，來源與目標設備節點 ID 均不得省略
 7. 若問題詢問步驟的前置依賴，請列出所有透過 DEPENDS_ON 連結的前置步驟節點 ID
 8. 只有在圖譜中完全找不到任何相關關係時，才回答：「查詢結果：此問題不在目前 SOP 圖譜涵蓋範圍。」否則請根據圖譜回答。
 9. 使用繁體中文，回答請簡潔、結構化（可用條列式說明步驟）；引用圖譜中的節點 ID 時直接使用原始英文 ID，不要翻譯
@@ -80,7 +80,7 @@ _PROMPT_TEMPLATE = """\
 【工程師問題】
 {question}
 
-在輸出答案前，請先在心中逐一核對每條圖譜關係是否與問題相關，確認所有相關屬性（如 required_status、trigger、action、reason、interlock_id）都已納入最終答案，再輸出【查詢結果】。
+在輸出答案前，請先在心中逐一核對每條圖譜關係是否與問題相關，確認所有相關屬性（如 required_status、trigger、action、reason、interlock_id）都已納入最終答案；若涉及 INTERLOCK_WITH，請額外確認已同時列出來源與目標設備節點 ID，再輸出【查詢結果】。
 
 【查詢結果】"""
 
