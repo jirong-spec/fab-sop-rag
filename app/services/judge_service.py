@@ -92,67 +92,6 @@ def judge_topic_relevance(question: str) -> dict[str, bool | str]:
     return {"relevant": True, "reason": "（主題判斷失敗，寬鬆模式下放行，建議檢查 LLM 服務）"}
 
 
-# ── Evidence relevance ───────────────────────────────────────────────────────
-
-_EVIDENCE_PROMPT = """\
-你是一位 SOP 查詢系統的證據評估助理。
-判斷下方 SOP 圖譜三元組是否包含足以回答工程師問題的相關證據。
-
-【工程師問題】
-{question}
-
-【檢索到的 SOP 圖譜三元組】
-{triples}
-
-判斷標準：
-1. 三元組中是否有任何一條與問題直接相關（如問步驟順序 → 是否有 FIRST_STEP / NEXT_STEP；問設備狀態 → 是否有 REQUIRES_STATUS / PRECONDITION；問異常處置 → 是否有 TRIGGERS_SOP）
-2. 若所有三元組均與問題無關，或僅為噪音（來自不相關的 SOP 或設備），則視為證據不足
-3. 只要有至少一條三元組能直接支撐問題的部分答案，即視為證據充足
-
-請僅回傳 JSON，不要有其他文字：
-{{"sufficient": true, "reason": "簡短說明（20字以內）"}}
-或
-{{"sufficient": false, "reason": "說明為何圖譜中無相關證據（20字以內）"}}"""
-
-
-def judge_evidence_relevance(question: str, triples: list[str]) -> dict[str, bool | str]:
-    """
-    Judge whether the retrieved triples contain evidence relevant to the question.
-
-    Pre-filters to top-10 by embedding similarity before sending to LLM,
-    so the model judges a focused set rather than 40+ raw triples.
-
-    Returns {"sufficient": bool, "reason": str}.
-
-    Fallback policy: lenient — pass with warning when LLM is unavailable,
-    to avoid blocking valid queries due to LLM service issues.
-    """
-    # Pre-filter: rerank and keep top-10 so LLM judges the most relevant triples
-    try:
-        from app.services.answer_service import _score_triples
-        scored = _score_triples(question, triples)
-        top_triples = [t for _, t in scored[:10]]
-    except Exception:
-        top_triples = triples[:10]
-
-    context = "\n".join(top_triples)
-    prompt = _EVIDENCE_PROMPT.format(question=question, triples=context)
-    try:
-        raw = chat_completion(prompt, temperature=0.0, max_tokens=128)
-        data = extract_json(raw)
-        if data is not None:
-            return {
-                "sufficient": bool(data.get("sufficient", True)),
-                "reason": str(data.get("reason", "")),
-            }
-        logger.warning("judge_evidence_relevance: JSON parse failed, raw=%r", raw[:120])
-    except Exception as exc:
-        logger.warning("judge_evidence_relevance: LLM call failed: %s", exc)
-
-    logger.warning("Evidence judge fallback → LENIENT pass")
-    return {"sufficient": True, "reason": "（證據評估失敗，寬鬆模式下放行）"}
-
-
 # ── Fact grounding ────────────────────────────────────────────────────────────
 
 _GROUNDING_PROMPT = """\

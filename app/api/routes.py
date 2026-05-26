@@ -18,12 +18,12 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.auth import require_api_key
 from app.config import settings
 from app.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse, IngestRequest, IngestResponse, ServiceStatus
-from app.services.pipeline import run_pipeline
+from app.services.pipeline import run_pipeline, run_pipeline_stream
 from app.utils.context import get_request_id
 
 logger = logging.getLogger(__name__)
@@ -178,7 +178,68 @@ async def ask(
     )
 
 
+# ── SOP knowledge query (streaming) ──────────────────────────────────────────
+
+@v1_router.post(
+    "/ask/stream",
+    summary="Query the SOP knowledge base (streaming)",
+    description=(
+        "Same guardrail pipeline as `/v1/ask`, but tokens stream via "
+        "Server-Sent Events so the first word appears in <200ms.\n\n"
+        "Event types:\n"
+        "- `token` — one LLM output token (`{\"type\":\"token\",\"text\":\"...\"}`)\n"
+        "- `done`  — final metadata after guard_grounding completes\n"
+        "- `blocked` — a guardrail blocked the request\n\n"
+        "guard_grounding runs after the last token; clients see the full answer "
+        "~1150ms before the final `done` event arrives."
+    ),
+    response_class=StreamingResponse,
+)
+async def ask_stream(
+    req: AskRequest,
+    _: None = Depends(require_api_key),
+) -> StreamingResponse:
+    logger.info("POST /v1/ask/stream | question=%r", req.question[:80])
+
+    async def _generate():
+        import threading
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
+
+        def _run_sync():
+            try:
+                for event in run_pipeline_stream(req):
+                    loop.call_soon_threadsafe(queue.put_nowait, event)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+
+        threading.Thread(target=_run_sync, daemon=True).start()
+
+        while True:
+            item = await queue.get()
+            if item is _SENTINEL:
+                break
+            yield item
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
 # ── SOP knowledge graph ingest ────────────────────────────────────────────────
+
+_ALLOWED_NODE_LABELS = frozenset({
+    "SOPDocument", "SOPStep", "Anomaly", "Equipment", "Node",
+})
+_ALLOWED_REL_TYPES = frozenset({
+    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
+    "REQUIRES_STATUS", "PRECONDITION", "DEFINED_IN",
+    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY", "RELATES_TO",
+})
+def _validate_identifier(value: str, allowed: frozenset[str], field: str) -> str:
+    if value not in allowed:
+        raise ValueError(f"Disallowed {field}: {value!r}. Allowed: {sorted(allowed)}")
+    return value
+
 
 def _run_ingest(req: IngestRequest) -> IngestResponse:
     """Merge nodes and edges into Neo4j, tagging each with source_file."""
@@ -191,7 +252,8 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
 
     with driver.session() as session:
         for node in req.nodes:
-            label = node.get("label", "Node")
+            raw_label = node.get("label", "Node")
+            label = _validate_identifier(raw_label, _ALLOWED_NODE_LABELS, "node label")
             props = dict(node.get("properties", {}))
             props["source_file"] = req.source_file
             node_id = props.get("id", "")
@@ -204,10 +266,13 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
             nodes_merged += 1
 
         for edge in req.edges:
-            rel_type = edge.get("type", "RELATES_TO")
-            from_label = edge.get("from_label", "")
+            raw_rel = edge.get("type", "RELATES_TO")
+            rel_type = _validate_identifier(raw_rel, _ALLOWED_REL_TYPES, "relationship type")
+            raw_from = edge.get("from_label", "")
+            raw_to = edge.get("to_label", "")
+            from_label = _validate_identifier(raw_from, _ALLOWED_NODE_LABELS, "from_label") if raw_from else ""
+            to_label = _validate_identifier(raw_to, _ALLOWED_NODE_LABELS, "to_label") if raw_to else ""
             from_id = edge.get("from_id", "")
-            to_label = edge.get("to_label", "")
             to_id = edge.get("to_id", "")
             props = dict(edge.get("properties", {}))
             props["source_file"] = req.source_file

@@ -17,7 +17,9 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 import logging
 import re
 
-from app.services.llm_client import chat_completion
+from collections.abc import Iterator
+
+from app.services.llm_client import chat_completion, chat_completion_stream
 
 logger = logging.getLogger(__name__)
 
@@ -88,26 +90,13 @@ _PROMPT_TEMPLATE = """\
 【查詢結果】"""
 
 
-def generate_answer(
+def _prepare_generation(
     question: str, triples: list[str], entities: list[str] | None = None
 ) -> tuple[str, list[str]]:
     """
-    Generate a grounded SOP answer from graph triples.
-
-    Returns (answer, model_triples) where model_triples is the subset actually
-    passed to the LLM (after rerank + cap). This lets callers distinguish what
-    the model saw from the full evidence_triples returned by graph traversal.
-
-    Returns the fixed no-info phrase when triples is empty — this is treated
-    as a grounded response by guard_grounding (no hallucinated content).
+    Rerank triples, apply dynamic cap + SOP filter, build the LLM prompt.
+    Returns (prompt, model_triples).  Pure CPU/embedding — no LLM call.
     """
-    if not triples:
-        return _NO_INFO_ANSWER, []
-
-    # Iterative greedy retrieval: 4 rounds, no repeat.
-    # Rank all triples by relevance, then take the minimum subset that keeps
-    # every triple scoring ≥ 50% of the top score (dynamic cap).
-    # Floor at 5 triples, hard ceiling at 100 to bound LLM context size.
     scored_all = _score_triples(question, triples, entities=entities)
     if scored_all:
         threshold = max(int(scored_all[0][0] * 0.50), 20)
@@ -120,13 +109,8 @@ def generate_answer(
     logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold if scored_all else 0)
     model_triples = [triple for _, triple in scored]
 
-    # If the question names a specific SOP ID, remove triples where a SOPStep
-    # is explicitly DEFINED_IN a different SOP. This prevents steps from other
-    # SOPs leaking in while preserving NEXT_STEP, DEPENDS_ON, CROSS_DOC_DEPENDENCY
-    # edges (which either have no SOP ID or connect the asked SOP to another).
     sop_ids = re.findall(r'SOP_\w+', question)
     if sop_ids:
-        # Pass 1: find steps that are DEFINED_IN other SOPs
         foreign_steps: set[str] = set()
         for t in model_triples:
             m_step = re.search(r'^\((\w+)[\[\)]', t)
@@ -134,7 +118,6 @@ def generate_answer(
             if m_step and m_sop and m_sop.group(1).startswith('SOP_') and m_sop.group(1) not in sop_ids:
                 foreign_steps.add(m_step.group(1))
 
-        # Pass 2: remove triples from other SOPs and those involving foreign steps
         foreign_step_pat = re.compile(r'[\(\)](' + '|'.join(re.escape(s) for s in foreign_steps) + r')[\[\)\-]') if foreign_steps else None
 
         def _is_foreign(triple: str) -> bool:
@@ -149,10 +132,6 @@ def generate_answer(
             model_triples = filtered
             scored = [(pct, t) for pct, t in scored if t in set(filtered)]
 
-        # Pass 3: step-sequence queries often need the full NEXT_STEP chain, but
-        # those triples score lower than DEFINED_IN/TRIGGERS_SOP and get cut by the
-        # dynamic cap. Force-supplement them from the full triple set when the
-        # question asks about order/sequence.
         if re.search(r'步驟|順序|流程', question):
             existing = set(model_triples)
             score_lookup = {t: s for s, t in scored_all}
@@ -168,10 +147,50 @@ def generate_answer(
 
     context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
+    return prompt, model_triples
+
+
+def generate_answer(
+    question: str, triples: list[str], entities: list[str] | None = None
+) -> tuple[str, list[str]]:
+    """
+    Generate a grounded SOP answer from graph triples (synchronous).
+    Returns (answer, model_triples).
+    """
+    if not triples:
+        return _NO_INFO_ANSWER, []
     try:
+        prompt, model_triples = _prepare_generation(question, triples, entities)
         return chat_completion(prompt, temperature=0.0, max_tokens=512), model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
-        # Return empty model_triples: the LLM never received them, so callers
-        # should not score them as evidence the model actually saw.
         return _LLM_ERROR_ANSWER, []
+
+
+def generate_answer_stream(
+    question: str, triples: list[str], entities: list[str] | None = None
+) -> tuple[Iterator[str], list[str]]:
+    """
+    Prepare generation and return (token_iterator, model_triples).
+
+    model_triples is returned immediately (before streaming starts) so the
+    caller can start guard_grounding as soon as the stream finishes.
+
+    Usage:
+        token_iter, model_triples = generate_answer_stream(question, triples)
+        for token in token_iter:
+            ...stream to client...
+    """
+    if not triples:
+        def _empty():
+            yield _NO_INFO_ANSWER
+        return _empty(), []
+
+    try:
+        prompt, model_triples = _prepare_generation(question, triples, entities)
+        return chat_completion_stream(prompt, temperature=0.0, max_tokens=512), model_triples
+    except Exception as exc:
+        logger.error("Answer stream preparation failed: %s", exc)
+        def _error():
+            yield _LLM_ERROR_ANSWER
+        return _error(), []

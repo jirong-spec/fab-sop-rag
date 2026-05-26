@@ -32,7 +32,7 @@ import re
 import logging
 
 from app.schemas import GuardrailResult
-from app.services.judge_service import judge_topic_relevance, judge_grounding
+from app.services.judge_service import judge_topic_relevance, judge_grounding  # noqa: F401
 
 # SOP entity code pattern: SOP_Etch_001, CheckVacuumPump, TurboVacuumPump, etc.
 # If the question explicitly references a known fab SOP entity, it is unambiguously
@@ -138,7 +138,7 @@ def guard_topic(question: str) -> GuardrailResult:
     )
 
 
-def guard_evidence(triples: list[str], question: str = "", min_count: int = 1) -> GuardrailResult:
+def guard_evidence(triples: list[str], min_count: int = 1) -> GuardrailResult:
     """
     Retrieval guard — block if retrieved SOP graph evidence is insufficient.
 
