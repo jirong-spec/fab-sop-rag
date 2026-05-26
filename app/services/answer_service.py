@@ -15,10 +15,17 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 """
 
 import logging
+import re
 
 from app.services.llm_client import chat_completion
 
 logger = logging.getLogger(__name__)
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = (sum(x * x for x in a) ** 0.5) * (sum(x * x for x in b) ** 0.5)
+    return dot / norm if norm else 0.0
 
 
 def _score_triples(
@@ -32,17 +39,13 @@ def _score_triples(
     emb = _get_reranker_embeddings()
     q_vec = emb.embed_query(question)
     t_vecs = emb.embed_documents(triples)
-
-    def cosine(a: list[float], b: list[float]) -> float:
-        dot = sum(x * y for x, y in zip(a, b))
-        norm = (sum(x * x for x in a) ** 0.5) * (sum(x * x for x in b) ** 0.5)
-        return dot / norm if norm else 0.0
-
     scored = sorted(
-        [(cosine(q_vec, tv), t) for tv, t in zip(t_vecs, triples)],
+        [(_cosine(q_vec, tv), t) for tv, t in zip(t_vecs, triples)],
         reverse=True,
     )
     return [(round(score * 100), triple) for score, triple in scored]
+
+
 
 _NO_INFO_ANSWER = "此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
 _LLM_ERROR_ANSWER = "（LLM 服務暫時無法使用，請稍後再試）"
@@ -66,7 +69,7 @@ _PROMPT_TEMPLATE = """\
 【查詢原則】
 1. 僅使用圖譜中明確記載的關係作為答案依據，不得補充一般製程常識
 2. 若問題詢問「異常應執行哪份 SOP」，請使用 TRIGGERS_SOP 關係回答
-3. 若問題詢問步驟順序，請從 FIRST_STEP 出發，沿 NEXT_STEP 鏈依序列出所有步驟，並明確列出每個步驟的節點 ID
+3. 若問題詢問步驟順序，請從該 SOP 的 FIRST_STEP 出發，嚴格沿 NEXT_STEP 鏈依序列出步驟，只列出 DEFINED_IN 被問 SOP 的步驟節點 ID；其他 SOP 的步驟即使出現在圖譜關係中也一律忽略
 4. 若問題詢問設備狀態要求，請使用 REQUIRES_STATUS 或 PRECONDITION 邊的 required_status 屬性回答，並逐一列出每台設備 ID 及其對應狀態值
 5. 若問題詢問「哪份文件定義了某設備狀態」，請直接引用 CROSS_DOC_DEPENDENCY 邊的 reason 屬性內容回答，例如：「依據圖譜，SOP_Pump_002 定義了 TurboVacuumPump 的狀態。」
 6. 若問題詢問 Interlock 條件，每條 INTERLOCK_WITH 邊必須依照下列格式回答：「來源設備 → 目標設備（interlock_id: XXX，觸發條件: XXX，動作: XXX）」，來源與目標設備節點 ID 均不得省略
@@ -101,12 +104,13 @@ def generate_answer(
     if not triples:
         return _NO_INFO_ANSWER, []
 
+    # Iterative greedy retrieval: 4 rounds, no repeat.
     # Rank all triples by relevance, then take the minimum subset that keeps
     # every triple scoring ≥ 50% of the top score (dynamic cap).
     # Floor at 5 triples, hard ceiling at 100 to bound LLM context size.
     scored_all = _score_triples(question, triples, entities=entities)
     if scored_all:
-        threshold = max(scored_all[0][0] * 0.50, 20)
+        threshold = max(int(scored_all[0][0] * 0.50), 20)
         scored = [item for item in scored_all if item[0] >= threshold]
         scored = scored[:100] if len(scored) > 100 else scored
         if len(scored) < 5:
@@ -115,6 +119,53 @@ def generate_answer(
         scored = scored_all
     logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold if scored_all else 0)
     model_triples = [triple for _, triple in scored]
+
+    # If the question names a specific SOP ID, remove triples where a SOPStep
+    # is explicitly DEFINED_IN a different SOP. This prevents steps from other
+    # SOPs leaking in while preserving NEXT_STEP, DEPENDS_ON, CROSS_DOC_DEPENDENCY
+    # edges (which either have no SOP ID or connect the asked SOP to another).
+    sop_ids = re.findall(r'SOP_\w+', question)
+    if sop_ids:
+        # Pass 1: find steps that are DEFINED_IN other SOPs
+        foreign_steps: set[str] = set()
+        for t in model_triples:
+            m_step = re.search(r'^\((\w+)[\[\)]', t)
+            m_sop = re.search(r'-\[:DEFINED_IN[^\]]*\]->\((\w+)', t)
+            if m_step and m_sop and m_sop.group(1).startswith('SOP_') and m_sop.group(1) not in sop_ids:
+                foreign_steps.add(m_step.group(1))
+
+        # Pass 2: remove triples from other SOPs and those involving foreign steps
+        foreign_step_pat = re.compile(r'[\(\)](' + '|'.join(re.escape(s) for s in foreign_steps) + r')[\[\)\-]') if foreign_steps else None
+
+        def _is_foreign(triple: str) -> bool:
+            m = re.search(r'^\((\w+)[\[\)]', triple)
+            if m and m.group(1).startswith('SOP_') and m.group(1) not in sop_ids:
+                return True
+            return bool(foreign_step_pat and foreign_step_pat.search(triple))
+
+        filtered = [t for t in model_triples if not _is_foreign(t)]
+        if len(filtered) >= 3:
+            logger.debug("SOP filter: %d→%d triples (sop_ids=%s)", len(model_triples), len(filtered), sop_ids)
+            model_triples = filtered
+            scored = [(pct, t) for pct, t in scored if t in set(filtered)]
+
+        # Pass 3: step-sequence queries often need the full NEXT_STEP chain, but
+        # those triples score lower than DEFINED_IN/TRIGGERS_SOP and get cut by the
+        # dynamic cap. Force-supplement them from the full triple set when the
+        # question asks about order/sequence.
+        if re.search(r'步驟|順序|流程', question):
+            existing = set(model_triples)
+            score_lookup = {t: s for s, t in scored_all}
+            supplements = [
+                t for t in triples
+                if 'NEXT_STEP' in t and t not in existing and not _is_foreign(t)
+            ]
+            if supplements:
+                logger.debug("NEXT_STEP supplement: +%d triples", len(supplements))
+                for t in supplements:
+                    model_triples.append(t)
+                    scored.append((score_lookup.get(t, 0), t))
+
     context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
     try:

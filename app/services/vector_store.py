@@ -9,11 +9,24 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _cuda_kwargs() -> dict:
+    """Return model_kwargs with CUDA device if available, else CPU."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            logger.info("Embedding device: cuda")
+            return {"device": "cuda"}
+    except ImportError:
+        pass
+    logger.info("Embedding device: cpu")
+    return {"device": "cpu"}
+
+
 @lru_cache(maxsize=1)
 def _get_embeddings() -> HuggingFaceEmbeddings:
     """Lazy-init the Chroma embedding model (used for entity extraction)."""
     logger.info("Loading embedding model: %s", settings.embedding_model)
-    return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+    return HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_cuda_kwargs())
 
 
 @lru_cache(maxsize=1)
@@ -24,7 +37,7 @@ def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
     """
     model = settings.reranker_model or settings.embedding_model
     logger.info("Loading reranker model: %s", model)
-    return HuggingFaceEmbeddings(model_name=model)
+    return HuggingFaceEmbeddings(model_name=model, model_kwargs=_cuda_kwargs())
 
 
 @lru_cache(maxsize=1)

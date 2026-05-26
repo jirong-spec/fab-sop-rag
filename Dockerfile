@@ -9,7 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies before copying app code (layer-cache friendly)
+# Install PyTorch with CUDA 12.4 support BEFORE other deps so sentence-transformers
+# doesn't pull in the default CPU-only or wrong-CUDA wheel.
+RUN pip install --no-cache-dir \
+    torch==2.5.1+cu124 \
+    --index-url https://download.pytorch.org/whl/cu124
+
+# Install remaining Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

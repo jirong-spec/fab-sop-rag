@@ -1,18 +1,20 @@
 """
-Graph RAG Evaluation
+Graph RAG vs Vector RAG Evaluation
 
-Runs all queries from data/sample_queries/fab_queries.json through the
-graph RAG pipeline and reports:
+Runs all queries through both pipelines and reports:
 
-  • R (Retrieval) — expected keywords in model_triples
+  • R (Retrieval) — expected keywords in model_triples   [Graph RAG only]
   • A (Answer)    — expected keywords in answer
   • Correct-block rate — off-topic queries correctly rejected
-  • Latency (ms)
+  • Latency (ms) — side-by-side comparison
 
 Usage
 -----
   # Live mode (requires Neo4j + vLLM + Chroma running):
   docker compose exec -T api python scripts/eval_compare.py
+
+  # Graph RAG only (original behaviour):
+  docker compose exec -T api python scripts/eval_compare.py --graph-only
 
   # Save JSON results:
   docker compose exec -T api python scripts/eval_compare.py --output data/eval_results/latest.json
@@ -73,13 +75,16 @@ def score_response(resp: dict, expected: dict) -> dict:
 
 # ── Live runner ───────────────────────────────────────────────────────────────
 
-def _run_live(queries: list[dict]) -> list[dict]:
+def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
     from app.schemas import AskRequest
     from app.services.pipeline import run_pipeline
+    from app.services.vector_pipeline import run_vector_pipeline
 
     print("[INFO] Pre-warming services...")
     try:
-        from app.services.vector_store import _get_vector_store
+        from app.services.vector_store import _get_vector_store, _get_embeddings, _get_reranker_embeddings
+        _get_embeddings().embed_query("warmup")
+        _get_reranker_embeddings().embed_query("warmup")
         _get_vector_store()
         from app.services.graph_store import _get_driver
         _get_driver()
@@ -95,86 +100,138 @@ def _run_live(queries: list[dict]) -> list[dict]:
             req = AskRequest(question=q["question"], enable_guards=True, top_k=4, max_hop=2)
             qid = q["id"]
 
+            # ── Graph RAG ──────────────────────────────────────────────────
             t0 = time.perf_counter()
             fut = pool.submit(run_pipeline, req)
             try:
                 gr = fut.result(timeout=QUERY_TIMEOUT_SEC)
                 g_ms = int((time.perf_counter() - t0) * 1000)
-                entry = {
-                    "status": gr.status,
-                    "reasoning_type": gr.reasoning_type,
-                    "latency_ms": g_ms,
-                    "answer": gr.answer,
+                graph_entry = {
+                    "status": gr.status, "reasoning_type": gr.reasoning_type,
+                    "latency_ms": g_ms, "answer": gr.answer,
                     "evidence_triples": gr.evidence_triples,
-                    "model_triples": gr.model_triples,
-                    "entities": gr.entities,
+                    "model_triples": gr.model_triples, "entities": gr.entities,
                 }
             except FuturesTimeoutError:
-                g_ms = QUERY_TIMEOUT_SEC * 1000
-                print(f"[WARNING] Timed out: {qid}")
-                entry = {
+                print(f"[WARNING] Graph RAG timed out: {qid}")
+                graph_entry = {
                     "status": "error", "reasoning_type": "timeout",
-                    "latency_ms": g_ms, "answer": f"[TIMEOUT]",
+                    "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
                     "evidence_triples": [], "model_triples": [], "entities": [],
                 }
 
-            results.append({"id": qid, "graph": entry})
+            # ── Vector RAG ─────────────────────────────────────────────────
+            vector_entry = None
+            if run_vector:
+                t0 = time.perf_counter()
+                fut = pool.submit(run_vector_pipeline, req)
+                try:
+                    vr, sl = fut.result(timeout=QUERY_TIMEOUT_SEC)
+                    v_ms = int((time.perf_counter() - t0) * 1000)
+                    vector_entry = {
+                        "status": vr.status, "reasoning_type": vr.reasoning_type,
+                        "latency_ms": v_ms, "answer": vr.answer,
+                        "model_triples": vr.model_triples,
+                        "stage_latencies": sl,
+                    }
+                except FuturesTimeoutError:
+                    print(f"[WARNING] Vector RAG timed out: {qid}")
+                    vector_entry = {
+                        "status": "error", "reasoning_type": "timeout",
+                        "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
+                        "model_triples": [], "stage_latencies": {},
+                    }
+
+            results.append({"id": qid, "graph": graph_entry, "vector": vector_entry})
     return results
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
 
 def render_report(queries: list[dict], results: dict) -> str:
+    has_vector = any(results.get(q["id"], {}).get("vector") is not None for q in queries)
+
     rows = []
-    kw_hits = kw_total = ret_hits = ret_total = 0
+    g_kw_hits = g_kw_total = g_ret_hits = g_ret_total = 0
+    v_kw_hits = v_kw_total = 0
     block_hits = block_total = 0
-    latencies = []
+    g_latencies = []
+    v_latencies = []
     mh_hits = mh_total = 0
 
     for q in queries:
         qid = q["id"]
-        resp = results.get(qid, {}).get("graph", {})
-        score = score_response(resp, q)
-        ms = resp.get("latency_ms", 0)
-        latencies.append(ms)
+        g_resp = results.get(qid, {}).get("graph", {})
+        v_resp = results.get(qid, {}).get("vector") or {}
+        g_score = score_response(g_resp, q)
+        v_score = score_response(v_resp, q) if v_resp else None
+        g_ms = g_resp.get("latency_ms", 0)
+        v_ms = v_resp.get("latency_ms", 0) if v_resp else 0
+        g_latencies.append(g_ms)
+        if v_resp:
+            v_latencies.append(v_ms)
         tag = " [↑HOP]" if qid in MULTIHOP_IDS else ""
 
-        if score["is_block_query"]:
+        if g_score["is_block_query"]:
             block_total += 1
-            ok = "✅" if score["correct_block"] else "❌"
-            if score["correct_block"]:
+            ok = "✅" if g_score["correct_block"] else "❌"
+            if g_score["correct_block"]:
                 block_hits += 1
-            rows.append(f"  {qid} │ {q['category'][:30]:<30}{tag:<7} │ {ok} blocked          │ {ms:>5}ms")
+            v_col = f"{v_ms:>5}ms" if v_resp else "  n/a "
+            rows.append(f"  {qid} │ {q['category'][:28]:<28}{tag:<7} │ {ok} blocked   {g_ms:>5}ms │ {ok} blocked   {v_col}")
         else:
-            gh, gt = score["keyword_hits"], score["keyword_total"]
-            grh = score["retrieval_hits"]
-            kw_hits += gh; kw_total += gt
-            ret_hits += grh; ret_total += gt
+            gh, gt = g_score["keyword_hits"], g_score["keyword_total"]
+            grh = g_score["retrieval_hits"]
+            g_kw_hits += gh; g_kw_total += gt
+            g_ret_hits += grh; g_ret_total += gt
             if qid in MULTIHOP_IDS:
                 mh_hits += gh; mh_total += gt
             r = "R✅" if grh == gt else ("R⚠" if grh > 0 else "R❌")
-            a = "A✅" if gh == gt else ("A⚠" if gh > 0 else "A❌")
-            rows.append(f"  {qid} │ {q['category'][:30]:<30}{tag:<7} │ {r} {a} {gh}/{gt:<2}          │ {ms:>5}ms")
+            ga = "A✅" if gh == gt else ("A⚠" if gh > 0 else "A❌")
+            g_col = f"{r} {ga} {gh}/{gt}  {g_ms:>5}ms"
 
-    avg_ms = int(sum(latencies) / len(latencies)) if latencies else 0
-    kw_pct = kw_hits / kw_total * 100 if kw_total else 0
-    ret_pct = ret_hits / ret_total * 100 if ret_total else 0
+            if v_score and v_resp:
+                vh, vt = v_score["keyword_hits"], v_score["keyword_total"]
+                v_kw_hits += vh; v_kw_total += vt
+                va = "A✅" if vh == vt else ("A⚠" if vh > 0 else "A❌")
+                delta = g_ms - v_ms
+                sign = "+" if delta > 0 else ""
+                v_col = f"     {va} {vh}/{vt}  {v_ms:>5}ms  Δ{sign}{delta}ms"
+            else:
+                v_col = "  n/a"
+
+            rows.append(f"  {qid} │ {q['category'][:28]:<28}{tag:<7} │ {g_col} │ {v_col}")
+
+    g_avg = int(sum(g_latencies) / len(g_latencies)) if g_latencies else 0
+    v_avg = int(sum(v_latencies) / len(v_latencies)) if v_latencies else 0
+    g_kw_pct = g_kw_hits / g_kw_total * 100 if g_kw_total else 0
+    g_ret_pct = g_ret_hits / g_ret_total * 100 if g_ret_total else 0
+    v_kw_pct = v_kw_hits / v_kw_total * 100 if v_kw_total else 0
     mh_pct = mh_hits / mh_total * 100 if mh_total else 0
+    delta_avg = g_avg - v_avg
 
-    sep = "  " + "─" * 72
+    sep = "  " + "─" * 88
+    hdr_g = f"{'Graph RAG  R/A  Latency':^28}"
+    hdr_v = f"{'Vector RAG  A  Latency  Δ':^32}" if has_vector else ""
     lines = [
-        "", "=" * 50,
-        "  Fab SOP RAG — Evaluation Report",
-        "=" * 50, "",
+        "", "=" * 60,
+        "  Fab SOP RAG — Graph RAG vs Vector RAG Comparison",
+        "=" * 60, "",
         sep,
-        f"  {'ID':<4} │ {'Category':<37} │ {'R / A':^18} │ {'Latency':^7}",
+        f"  {'ID':<4} │ {'Category':<35} │ {hdr_g} │ {hdr_v}",
         sep,
         *rows,
         sep,
-        f"  TOTALS │ R:{ret_hits}/{ret_total}({ret_pct:.0f}%)  A:{kw_hits}/{kw_total}({kw_pct:.0f}%)  block:{block_hits}/{block_total}  avg {avg_ms}ms",
+        f"  Graph RAG  │ R:{g_ret_hits}/{g_ret_total}({g_ret_pct:.0f}%)  A:{g_kw_hits}/{g_kw_total}({g_kw_pct:.0f}%)  block:{block_hits}/{block_total}  avg {g_avg}ms",
+    ]
+    if has_vector:
+        lines.append(
+            f"  Vector RAG │ A:{v_kw_hits}/{v_kw_total}({v_kw_pct:.0f}%)  avg {v_avg}ms  │  Graph overhead: Δ+{delta_avg}ms"
+        )
+    lines += [
         sep, "",
-        f"  Multi-hop (q02/q05/q07): {mh_hits}/{mh_total} ({mh_pct:.1f}%)",
-        "", "=" * 50,
+        f"  Multi-hop (q02/q05/q07): {mh_hits}/{mh_total} ({mh_pct:.1f}%)  [Graph RAG]",
+        "", "=" * 60,
     ]
     return "\n".join(lines)
 
@@ -233,11 +290,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=str, default="")
     parser.add_argument("--mlflow-uri", type=str, default="")
+    parser.add_argument("--graph-only", action="store_true", help="Skip Vector RAG baseline")
     args = parser.parse_args()
 
     queries = json.loads(QUERIES_PATH.read_text(encoding="utf-8"))
-    raw = _run_live(queries)
-    results = {r["id"]: {"graph": r["graph"]} for r in raw}
+    raw = _run_live(queries, run_vector=not args.graph_only)
+    results = {r["id"]: {"graph": r["graph"], "vector": r.get("vector")} for r in raw}
 
     print(render_report(queries, results))
 

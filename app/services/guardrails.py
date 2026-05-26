@@ -138,7 +138,7 @@ def guard_topic(question: str) -> GuardrailResult:
     )
 
 
-def guard_evidence(triples: list[str], min_count: int = 1) -> GuardrailResult:
+def guard_evidence(triples: list[str], question: str = "", min_count: int = 1) -> GuardrailResult:
     """
     Retrieval guard — block if retrieved SOP graph evidence is insufficient.
 

@@ -86,7 +86,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
 
     if req.enable_guards:
         _ts = time.perf_counter()
-        gr = guard_grounding(answer, triples)
+        gr = guard_grounding(answer, model_triples)
         stage_latencies["guard_grounding"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(gr)
         logger.info("Guard[grounding] pass=%s reason=%s", gr.passed, gr.reason)

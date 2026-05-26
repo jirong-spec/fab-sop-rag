@@ -10,32 +10,34 @@
 
 ## 一、評估結果
 
-### 最終成績（Qwen2.5-7B-Instruct-AWQ-int4，2026-05-13）
+### 最終成績（Qwen2.5-7B-Instruct-AWQ-int4，2026-05-26）
 
-| 指標 | Graph RAG | Baseline RAG | 差距 |
-|------|-----------|--------------|------|
-| **Retrieval 命中率** | **100%** (24/24) | 58.3% (14/24) | **+41.7 pp** |
-| **Answer 命中率** | **100%** (24/24) | 54.2% (13/24) | **+45.8 pp** |
+| 指標 | Graph RAG | Vector RAG | 差距 |
+|------|-----------|------------|------|
+| **Retrieval 命中率** | **100%** (24/24) | — | — |
+| **Answer 命中率** | **100%** (24/24) | 50.0% (12/24) | **+50.0 pp** |
 | **多跳查詢 Answer** | **100%** (8/8) | 25.0% (2/8) | **+75.0 pp** |
 | **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 4067 ms | 1348 ms | +2719 ms |
+| **平均端對端延遲** | 2982 ms | 2785 ms | +197 ms |
 
 ```
-ID   │ 類別                        │ R / A        │  延遲
-─────┼─────────────────────────────┼──────────────┼────────
-q01  │ anomaly_handling            │ R✅ A✅ 2/2  │  4881ms
-q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4  │  4349ms
-q03  │ equipment_precondition      │ R✅ A✅ 4/4  │  5012ms
-q04  │ step_dependency             │ R✅ A✅ 3/3  │  3102ms
-q05  │ cross_doc_dependency [↑HOP] │ R✅ A✅ 2/2  │  5404ms
-q06  │ interlock_condition         │ R✅ A✅ 3/3  │  6104ms
-q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2  │  4855ms
-q08  │ off_topic_blocked           │ ✅ blocked   │   585ms
-q09  │ off_topic_blocked           │ ✅ blocked   │   664ms
-q10  │ pump_check_sequence         │ R✅ A✅ 4/4  │  5716ms
-─────┼─────────────────────────────┼──────────────┼────────
-     │ TOTALS                      │ R 100% A 100%│ avg 4067ms
+ID   │ 類別                        │ R / A        │  Graph 延遲  │ Vector 延遲
+─────┼─────────────────────────────┼──────────────┼─────────────┼────────────
+q01  │ anomaly_handling            │ R✅ A✅ 2/2  │  3263 ms    │  3070 ms
+q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4  │  4716 ms    │  3162 ms ❌
+q03  │ equipment_precondition      │ R✅ A✅ 4/4  │  3952 ms    │  3747 ms ✅
+q04  │ step_dependency             │ R✅ A✅ 3/3  │  2564 ms    │  2931 ms ✅
+q05  │ cross_doc_dependency [↑HOP] │ R✅ A✅ 2/2  │  2485 ms    │  3301 ms ✅
+q06  │ interlock_condition         │ R✅ A✅ 3/3  │  5422 ms    │  4049 ms ⚠
+q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2  │  3315 ms    │  3287 ms ❌
+q08  │ off_topic_blocked           │ ✅ blocked   │   584 ms    │   588 ms ✅
+q09  │ off_topic_blocked           │ ✅ blocked   │   666 ms    │   668 ms ✅
+q10  │ pump_check_sequence         │ R✅ A✅ 4/4  │  2856 ms    │  3055 ms ⚠
+─────┼─────────────────────────────┼──────────────┼─────────────┼────────────
+     │ TOTALS                      │ R 100% A 100%│ avg 2982 ms │ avg 2785 ms
 ```
+
+Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
 
 - **R（Retrieval）**：預期關鍵字出現在模型實際收到的 triples（`model_triples`）中
 - **A（Answer）**：預期關鍵字出現在模型 `answer` 欄位中

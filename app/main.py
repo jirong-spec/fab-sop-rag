@@ -19,9 +19,11 @@ async def lifespan(app: FastAPI):
     logger.info("Fab SOP Knowledge Query API starting up (version 1.0.0)")
     # Pre-warm all heavy resources so the first real request has normal latency.
     try:
-        from app.services.vector_store import _get_vector_store
+        from app.services.vector_store import _get_vector_store, _get_embeddings, _get_reranker_embeddings
+        _get_embeddings().embed_query("warmup")
+        _get_reranker_embeddings().embed_query("warmup")
         _get_vector_store()
-        logger.info("Warm-up: embedding model + Chroma loaded")
+        logger.info("Warm-up: embedding models + Chroma loaded")
     except Exception as e:
         logger.warning("Warm-up vector store failed (non-fatal): %s", e)
     try:

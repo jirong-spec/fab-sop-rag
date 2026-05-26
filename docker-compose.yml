@@ -17,6 +17,14 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       OPENAI_API_BASE: http://vllm:8000/v1
       CHROMA_DIR: /data/chroma
+      NVIDIA_VISIBLE_DEVICES: "0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
     volumes:
       - chroma_data:/data/chroma
       - hf_cache:/root/.cache/huggingface   # caches the embedding model
