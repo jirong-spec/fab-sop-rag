@@ -89,12 +89,28 @@ def _parse_llm_json(raw: str) -> dict | None:
     # Strip markdown code fences
     text = re.sub(r"```(?:json)?\s*", "", raw).strip()
 
-    # Find the outermost JSON object via bracket counting
+    # Find the outermost JSON object via bracket counting + string tracking.
+    # String tracking is required so that } inside a string value (e.g. a
+    # trigger condition like "pressure > 10 {mTorr}") does not prematurely
+    # close the outermost object.
     start = text.find("{")
     if start == -1:
         return None
     depth = 0
+    in_string = False
+    escape = False
     for i, ch in enumerate(text[start:], start):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
         if ch == "{":
             depth += 1
         elif ch == "}":

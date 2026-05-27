@@ -56,8 +56,13 @@ def main() -> None:
 
     logger.info("Found %d SOP documents: %s", len(md_files), [f.name for f in md_files])
 
-    logger.info("Loading embedding model: %s", settings.embedding_model)
-    embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model)
+    try:
+        import torch
+        _model_kwargs = {"device": "cuda"} if torch.cuda.is_available() else {"device": "cpu"}
+    except ImportError:
+        _model_kwargs = {"device": "cpu"}
+    logger.info("Loading embedding model: %s (device=%s)", settings.embedding_model, _model_kwargs["device"])
+    embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_model_kwargs)
 
     logger.info("Opening Chroma store at: %s", settings.chroma_dir)
     client = chromadb.PersistentClient(path=settings.chroma_dir)

@@ -99,7 +99,7 @@ def render_response(data: dict, elapsed_ms: int | None = None) -> None:
         if guardrail_results:
             with st.expander("🛡 Guardrail 結果"):
                 for g in guardrail_results:
-                    icon = "✅" if g.get("passed") else "❌"
+                    icon = "✅" if g.get("pass") else "❌"
                     st.markdown(f"{icon} **{g['name']}** — {g.get('reason', '')}")
 
 

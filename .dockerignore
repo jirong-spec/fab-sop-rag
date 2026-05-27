@@ -30,3 +30,11 @@ Thumbs.db
 # Git
 .git
 .gitignore
+
+# Runtime-generated eval results — not seed data, should not be baked into the image
+data/eval_results/
+
+# Docker / deployment files — not COPYed by Dockerfile, exclude from build context
+docker-compose*.yml
+report.html
+visualisation.png

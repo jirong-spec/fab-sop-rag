@@ -34,13 +34,29 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=PROJECT_ROOT, **kwargs)
 
 
+def _get_api_llm_model() -> str:
+    """Read LLM_MODEL from .env so vLLM serves under the same name the running api expects."""
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("LLM_MODEL=") and not stripped.startswith("#"):
+                return stripped.split("=", 1)[1].strip().strip("\"'")
+    return "Qwen2.5-7B-Instruct-AWQ-int4"  # fallback matching docker-compose.yml default
+
+
 def _write_override(model: dict) -> Path:
-    """Write a docker-compose override that changes only the vllm command."""
+    """Write a docker-compose override that swaps only the vllm model command.
+
+    vLLM serves under the same name as settings.llm_model (read from .env) so the
+    api container does not need to be recreated between benchmark runs.
+    """
+    served_name = _get_api_llm_model()
     cmd = [
         "--model",        f"/llm/{model['name']}",
         "--host",         "0.0.0.0",
         "--port",         "8000",
-        "--served-model-name", "Qwen2.5-3B-Instruct",   # fixed alias so api finds it
+        "--served-model-name", served_name,
         "--device",       "cuda",
         "--max-model-len", str(model["max_model_len"]),
         "--kv-cache-dtype", "auto",
@@ -192,7 +208,7 @@ def main():
     override_path = PROJECT_ROOT / "docker-compose.benchmark-override.yml"
     if override_path.exists():
         override_path.unlink()
-    print("\n\n[Restore] Restarting vLLM with original model (Qwen2.5-3B-Instruct)...")
+    print("\n\n[Restore] Restarting vLLM with original model (from docker-compose.yml)...")
     _run(["docker", "compose", "up", "-d", "--no-deps", "--force-recreate", "vllm"])
 
     # Print summary table

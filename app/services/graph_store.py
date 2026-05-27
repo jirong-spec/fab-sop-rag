@@ -83,22 +83,22 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
             entities, hop,
         )
     for record in records:
-            path = record["p"]
-            for rel in path.relationships:
-                start_name = _node_label(rel.start_node)
-                end_name = _node_label(rel.end_node)
-                if not start_name or not end_name:
-                    continue
-                # Include edge properties (e.g. required_status, reason) so the
-                # LLM knows not just *what* is required but *which value* is needed.
-                rel_props = {k: v for k, v in dict(rel).items()}
-                if rel_props:
-                    prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
-                    triple = f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
-                else:
-                    triple = f"({start_name})-[:{rel.type}]->({end_name})"
-                if triple not in seen:
-                    seen.add(triple)
-                    result.append(triple)
+        path = record["p"]
+        for rel in path.relationships:
+            start_name = _node_label(rel.start_node)
+            end_name = _node_label(rel.end_node)
+            if not start_name or not end_name:
+                continue
+            # Include edge properties (e.g. required_status, reason) so the
+            # LLM knows not just *what* is required but *which value* is needed.
+            rel_props = {k: v for k, v in dict(rel).items()}
+            if rel_props:
+                prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
+                triple = f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
+            else:
+                triple = f"({start_name})-[:{rel.type}]->({end_name})"
+            if triple not in seen:
+                seen.add(triple)
+                result.append(triple)
 
     return result

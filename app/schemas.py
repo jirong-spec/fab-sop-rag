@@ -1,6 +1,8 @@
 from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.config import settings
+
 
 # ── Request / Response for POST /v1/ask ──────────────────────────────────────
 
@@ -8,8 +10,8 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000, description="使用者提問")
     enable_guards: bool = Field(True, description="是否啟用 guardrails")
     debug: bool = Field(False, description="是否回傳 debug 資訊")
-    max_hop: int = Field(2, ge=1, le=4, description="Graph 展開跳數")
-    top_k: int = Field(4, ge=1, le=20, description="Vector retrieval top-k")
+    max_hop: int = Field(settings.default_max_hop, ge=1, le=4, description="Graph 展開跳數")
+    top_k: int = Field(settings.default_top_k, ge=1, le=20, description="Vector retrieval top-k")
 
 
 class GuardrailResult(BaseModel):

@@ -196,7 +196,7 @@ def run_pipeline_stream(req: AskRequest, request_id: str = "-") -> Iterator[str]
             "type": "done", "status": "error", "answer": full_answer,
             "reasoning_type": "llm_error", "confidence": 0.0,
             "entities": entities, "evidence_triples": triples,
-            "model_triples": [], "source_docs": [],
+            "model_triples": model_triples, "source_docs": [],
             "guardrail_results": [r.model_dump() for r in guardrail_results],
             "latency_ms": int((time.perf_counter() - t0) * 1000),
         })

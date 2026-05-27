@@ -32,7 +32,7 @@ import re
 import logging
 
 from app.schemas import GuardrailResult
-from app.services.judge_service import judge_topic_relevance, judge_grounding  # noqa: F401
+from app.services.judge_service import judge_topic_relevance, judge_grounding
 
 # SOP entity code pattern: SOP_Etch_001, CheckVacuumPump, TurboVacuumPump, etc.
 # If the question explicitly references a known fab SOP entity, it is unambiguously
