@@ -371,11 +371,11 @@
           <div class="label">Retrieval Rate · Graph RAG</div>
         </div>
         <div class="card orange">
-          <div class="value">50%</div>
+          <div class="value">54.2%</div>
           <div class="label">Answer Rate · Vector RAG</div>
         </div>
         <div class="card blue">
-          <div class="value">~3.0s</div>
+          <div class="value">~4.0s</div>
           <div class="label">平均延遲 · Graph RAG</div>
         </div>
         <div class="card">
@@ -546,8 +546,8 @@
               </td>
               <td>問題不屬於晶圓廠 SOP 7 大類別</td>
               <td>
-                <strong>快速通道（無 vLLM）：</strong>含 entity code（如 <code>SOP_Etch_001</code>）→ 直接放行<br>
-                <code style="font-size:0.73rem;">[A-Z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+</code><br><br>
+                <strong>快速通道（無 vLLM）：</strong>含 SOP ID 或 CamelCase 實體（如 <code>SOP_Etch_001</code>、<code>EtchStation</code>）→ 直接放行<br>
+                <code style="font-size:0.73rem;">SOP_[A-Za-z0-9_]+|(?:[A-Z][a-z][A-Za-z0-9]*){2,}</code><br><br>
                 <strong>LLM-as-judge（~600 ms）：</strong>無 entity code → 送 vLLM 判斷，回傳 <code>{"relevant": bool, "reason": str}</code>
                 <div class="code-box" style="margin-top:10px;">你是一位晶圓廠 SOP 文件庫的主題過濾助理。
 你的任務是判斷工程師的問題是否屬於「晶圓廠 SOP 知識庫」的查詢範疇。
@@ -635,8 +635,8 @@
         </div>
         <div class="bar-wrap">
           <span class="bar-label">Vector RAG</span>
-          <div class="bar-outer"><div class="bar-inner bar-vector" style="width:50%">12/24</div></div>
-          <span class="bar-pct fail">50%</span>
+          <div class="bar-outer"><div class="bar-inner bar-vector" style="width:54%">13/24</div></div>
+          <span class="bar-pct fail">54.2%</span>
         </div>
       </div>
 
@@ -659,99 +659,99 @@
               <td class="mono">q01</td>
               <td>anomaly_handling</td>
               <td><span class="pass">R✅ A✅ 2/2</span></td>
-              <td class="mono">3263 ms</td>
-              <td><span class="warn">A⚠ 1/2</span></td>
-              <td class="mono">3070 ms</td>
-              <td class="mono warn">+193 ms</td>
+              <td class="mono">4623 ms</td>
+              <td><span class="pass">A✅ 2/2</span></td>
+              <td class="mono">3311 ms</td>
+              <td class="mono warn">+1312 ms</td>
             </tr>
             <tr>
               <td class="mono">q02</td>
               <td>sop_step_sequence ↑HOP</td>
               <td><span class="pass">R✅ A✅ 4/4</span></td>
-              <td class="mono">4636 ms</td>
+              <td class="mono">4515 ms</td>
               <td><span class="fail">A❌ 0/4</span></td>
-              <td class="mono">3162 ms</td>
-              <td class="mono warn">+1474 ms</td>
+              <td class="mono">4385 ms</td>
+              <td class="mono warn">+130 ms</td>
             </tr>
             <tr>
               <td class="mono">q03</td>
               <td>equipment_precondition</td>
               <td><span class="pass">R✅ A✅ 4/4</span></td>
-              <td class="mono">3957 ms</td>
+              <td class="mono">5432 ms</td>
               <td><span class="pass">A✅ 4/4</span></td>
-              <td class="mono">3747 ms</td>
-              <td class="mono">+210 ms</td>
+              <td class="mono">4399 ms</td>
+              <td class="mono warn">+1033 ms</td>
             </tr>
             <tr>
               <td class="mono">q04</td>
               <td>step_dependency</td>
               <td><span class="pass">R✅ A✅ 3/3</span></td>
-              <td class="mono">2582 ms</td>
+              <td class="mono">4238 ms</td>
               <td><span class="pass">A✅ 3/3</span></td>
-              <td class="mono">2931 ms</td>
-              <td class="mono pass">−349 ms</td>
+              <td class="mono">4285 ms</td>
+              <td class="mono pass">−47 ms</td>
             </tr>
             <tr>
               <td class="mono">q05</td>
               <td>cross_doc_dependency ↑HOP</td>
               <td><span class="pass">R✅ A✅ 2/2</span></td>
-              <td class="mono">2500 ms</td>
+              <td class="mono">3293 ms</td>
               <td><span class="pass">A✅ 2/2</span></td>
-              <td class="mono">3301 ms</td>
-              <td class="mono pass">−801 ms</td>
+              <td class="mono">5150 ms</td>
+              <td class="mono pass">−1857 ms</td>
             </tr>
             <tr>
               <td class="mono">q06</td>
               <td>interlock_condition</td>
               <td><span class="pass">R✅ A✅ 3/3</span></td>
-              <td class="mono">5584 ms</td>
+              <td class="mono">6668 ms</td>
               <td><span class="warn">A⚠ 1/3</span></td>
-              <td class="mono">4049 ms</td>
-              <td class="mono warn">+1535 ms</td>
+              <td class="mono">4144 ms</td>
+              <td class="mono warn">+2524 ms</td>
             </tr>
             <tr>
               <td class="mono">q07</td>
               <td>vent_procedure ↑HOP</td>
               <td><span class="pass">R✅ A✅ 2/2</span></td>
-              <td class="mono">3324 ms</td>
+              <td class="mono">4716 ms</td>
               <td><span class="fail">A❌ 0/2</span></td>
-              <td class="mono">3287 ms</td>
-              <td class="mono">+37 ms</td>
+              <td class="mono">4982 ms</td>
+              <td class="mono pass">−266 ms</td>
             </tr>
             <tr>
               <td class="mono">q08</td>
               <td>off_topic_blocked</td>
               <td><span class="pass">✅ blocked</span></td>
-              <td class="mono">592 ms</td>
+              <td class="mono">845 ms</td>
               <td><span class="pass">✅ blocked</span></td>
-              <td class="mono">588 ms</td>
-              <td class="mono">+4 ms</td>
+              <td class="mono">845 ms</td>
+              <td class="mono">0 ms</td>
             </tr>
             <tr>
               <td class="mono">q09</td>
               <td>off_topic_blocked</td>
               <td><span class="pass">✅ blocked</span></td>
-              <td class="mono">668 ms</td>
+              <td class="mono">877 ms</td>
               <td><span class="pass">✅ blocked</span></td>
-              <td class="mono">668 ms</td>
-              <td class="mono">0 ms</td>
+              <td class="mono">923 ms</td>
+              <td class="mono pass">−46 ms</td>
             </tr>
             <tr>
               <td class="mono">q10</td>
               <td>pump_check_sequence</td>
               <td><span class="pass">R✅ A✅ 4/4</span></td>
-              <td class="mono">2878 ms</td>
+              <td class="mono">4257 ms</td>
               <td><span class="warn">A⚠ 1/4</span></td>
-              <td class="mono">3055 ms</td>
-              <td class="mono pass">−177 ms</td>
+              <td class="mono">4526 ms</td>
+              <td class="mono pass">−269 ms</td>
             </tr>
             <tr style="background:var(--navy);color:#e2e8f0;">
               <td colspan="2" style="font-weight:700;color:#e2e8f0;">總計</td>
               <td style="color:#4ade80;font-weight:700;">R:24/24 (100%) · A:24/24 (100%)</td>
-              <td class="mono" style="color:#93c5fd;">avg 2982 ms</td>
-              <td style="color:#f87171;font-weight:700;">A:12/24 (50%)</td>
-              <td class="mono" style="color:#93c5fd;">avg 2785 ms</td>
-              <td class="mono" style="color:#fbbf24;">+197 ms</td>
+              <td class="mono" style="color:#93c5fd;">avg 3946 ms</td>
+              <td style="color:#f87171;font-weight:700;">A:13/24 (54.2%)</td>
+              <td class="mono" style="color:#93c5fd;">avg 3695 ms</td>
+              <td class="mono" style="color:#fbbf24;">+251 ms</td>
             </tr>
           </tbody>
         </table>
@@ -770,11 +770,11 @@
           <h4>Graph RAG — stage breakdown（典型問題）</h4>
           <div class="stage-row"><span>guard_injection</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>guard_topic</span><span class="stage-ms">~0 ms</span></div>
-          <div class="stage-row"><span>retrieval（Chroma + Neo4j + reranker）</span><span class="stage-ms">~100 ms</span></div>
+          <div class="stage-row"><span>retrieval（Chroma + Neo4j + reranker）</span><span class="stage-ms">~200 ms</span></div>
           <div class="stage-row"><span>guard_evidence</span><span class="stage-ms">~0 ms</span></div>
-          <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~1900 ms</span></div>
+          <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~2600 ms</span></div>
           <div class="stage-row"><span>guard_grounding（LLM）</span><span class="stage-ms">~1150 ms</span></div>
-          <div class="stage-row"><span><strong>Total</strong></span><span class="stage-ms"><strong>~3150 ms</strong></span></div>
+          <div class="stage-row"><span><strong>Total</strong></span><span class="stage-ms"><strong>~3950 ms</strong></span></div>
         </div>
 
         <div class="latency-card">
@@ -783,21 +783,21 @@
           <div class="stage-row"><span>guard_topic</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>retrieval（Chroma only）</span><span class="stage-ms">~15 ms</span></div>
           <div class="stage-row"><span>guard_evidence</span><span class="stage-ms">~0 ms</span></div>
-          <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~2100 ms</span></div>
+          <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~2530 ms</span></div>
           <div class="stage-row"><span>guard_grounding（LLM）</span><span class="stage-ms">~1150 ms</span></div>
-          <div class="stage-row"><span><strong>Total</strong></span><span class="stage-ms"><strong>~3265 ms</strong></span></div>
+          <div class="stage-row"><span><strong>Total</strong></span><span class="stage-ms"><strong>~3695 ms</strong></span></div>
         </div>
       </div>
 
       <p style="margin-top:18px;">
         兩個 pipeline 的 Guardrail 成本幾乎相同（guard_topic 在有 SOP entity code 時為 0 ms）。
-        Graph RAG 多出的 <strong>~197 ms overhead</strong> 來自：
+        Graph RAG 多出的 <strong>~251 ms overhead</strong> 來自：
       </p>
       <ul>
-        <li><strong>Neo4j 圖遍歷</strong>（2-hop Cypher 查詢）：+~85 ms</li>
-        <li><strong>Reranker 批次 embedding</strong>（40–62 條 triple，GPU）：+~65 ms</li>
+        <li><strong>Neo4j 圖遍歷</strong>（2-hop Cypher 查詢）：+~100 ms</li>
+        <li><strong>Reranker 批次 embedding</strong>（40–62 條 triple，GPU）：+~85 ms</li>
+        <li><strong>Generation prompt 長度</strong>（graph triple prompt token 略多）：+~70 ms</li>
         <li><strong>guard_grounding context</strong>（model_triples ~15–19 條 vs Chroma 6 個片段）：接近相同</li>
-        <li><strong>Generation prompt 長度</strong>（graph triple prompt token 略多）：視問題而定</li>
       </ul>
     </section>
 
@@ -887,8 +887,8 @@
             準確率從 50% 提升至 100%。差距集中於步驟順序、Interlock 條件、multi-hop 跨文件查詢等需要圖結構推理的問題。
           </div>
           <div class="conc-card">
-            <span class="conc-num">+197ms</span>
-            額外延遲僅 +197 ms（約 7%）。主因是 Neo4j graph traversal 與 reranker embedding，不是 LLM 呼叫次數差異。
+            <span class="conc-num">+251ms</span>
+            額外延遲僅 +251 ms（約 6%）。主因是 Neo4j graph traversal 與 reranker embedding，不是 LLM 呼叫次數差異。
           </div>
           <div class="conc-card">
             <span class="conc-num">0 幻覺</span>

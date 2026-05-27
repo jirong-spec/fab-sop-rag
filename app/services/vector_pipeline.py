@@ -9,6 +9,7 @@ import logging
 import time
 
 from app.schemas import AskRequest, AskResponse, GuardrailResult
+from app.services.answer_service import LLM_ERROR_ANSWER
 from app.services.guardrails import guard_injection, guard_topic, guard_grounding
 from app.services.llm_client import chat_completion
 from app.services.vector_store import similarity_search
@@ -87,8 +88,11 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
         answer = chat_completion(prompt, temperature=0.0, max_tokens=512)
     except Exception as exc:
         logger.error("Vector RAG generation failed: %s", exc)
-        answer = "（LLM 服務暫時無法使用，請稍後再試）"
+        answer = LLM_ERROR_ANSWER
     stage_latencies["generation"] = int((time.perf_counter() - _ts) * 1000)
+
+    if answer == LLM_ERROR_ANSWER:
+        return _blocked(req, guardrail_results, "llm_error", answer, t0), stage_latencies
 
     # ── Output Guard ──────────────────────────────────────────────────────────
     reasoning_type = "vector_rag"
@@ -110,7 +114,7 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
         status="answered",
         answer=answer,
         evidence_triples=chunks,
-        model_triples=chunks,
+        model_triples=[],
         guardrail_results=guardrail_results,
         reasoning_type=reasoning_type,
         confidence=confidence,

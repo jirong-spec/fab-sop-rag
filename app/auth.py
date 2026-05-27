@@ -11,6 +11,7 @@ Future: replace with JWT / OAuth2 middleware for production deployments.
 """
 
 import logging
+import secrets
 from fastapi import Security, HTTPException, status
 from fastapi.security import APIKeyHeader
 
@@ -25,7 +26,7 @@ async def require_api_key(api_key: str | None = Security(_api_key_header)) -> No
     """FastAPI dependency: validate X-API-Key when API_KEY is configured."""
     if not settings.api_key:
         return  # auth disabled
-    if api_key != settings.api_key:
+    if not api_key or not secrets.compare_digest(api_key, settings.api_key):
         logger.warning("Rejected request with invalid or missing API key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

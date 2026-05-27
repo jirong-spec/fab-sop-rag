@@ -25,9 +25,15 @@ COPY scripts/ ./scripts/
 COPY data/ ./data/
 
 # HuggingFace cache — overridden by the mounted volume at runtime
-ENV HF_HOME=/root/.cache/huggingface
+ENV HF_HOME=/app/.cache/huggingface
+
+# Run as non-root to limit blast radius if the process is compromised
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+    && chown -R appuser:appgroup /app \
+    && mkdir -p /data/chroma && chown -R appuser:appgroup /data
+USER appuser
 
 EXPOSE 8000
 
-# Single worker: services use lru_cache singletons that are not fork-safe
+# Single worker: services use module-level singletons that are not fork-safe
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

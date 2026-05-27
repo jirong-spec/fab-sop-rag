@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+APP_VERSION = "1.0.0"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -10,9 +12,10 @@ class Settings(BaseSettings):
 
     # LLM (OpenAI-compatible endpoint)
     openai_api_key: str = "EMPTY"
-    # Default uses Docker service name; override to http://localhost:8299/v1 for local dev
-    openai_api_base: str = "http://vllm:8299/v1"
-    llm_model: str = "Qwen2.5-3B-Instruct"
+    # Default uses Docker service name (container port 8000).
+    # For local dev outside Docker: override to http://localhost:8299/v1
+    openai_api_base: str = "http://vllm:8000/v1"
+    llm_model: str = "Qwen2.5-7B-Instruct-AWQ-int4"
     llm_timeout: float = 30.0
 
     # Neo4j

@@ -29,15 +29,28 @@ logger = logging.getLogger(__name__)
 
 _GRAPH_SEED_DIR = Path(__file__).resolve().parent.parent / "data" / "graph_seed"
 
+_ALLOWED_NODE_LABELS = frozenset({"SOPDocument", "SOPStep", "Anomaly", "Equipment", "Node"})
+_ALLOWED_REL_TYPES = frozenset({
+    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
+    "REQUIRES_STATUS", "PRECONDITION", "DEFINED_IN",
+    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY", "RELATES_TO",
+})
+
+
+def _validate_identifier(value: str, allowed: frozenset, field: str) -> str:
+    if value not in allowed:
+        raise ValueError(f"Disallowed {field}: {value!r}. Allowed: {sorted(allowed)}")
+    return value
+
 
 def _load_json(path: Path) -> list[dict]:
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def _merge_nodes(session, nodes: list[dict], source_file: str) -> None:
+def _merge_nodes(tx, nodes: list[dict], source_file: str) -> None:
     for node in nodes:
-        label = node["label"]
+        label = _validate_identifier(node["label"], _ALLOWED_NODE_LABELS, "node label")
         props = dict(node["properties"])
         props["source_file"] = source_file
         node_id = props["id"]
@@ -47,17 +60,17 @@ def _merge_nodes(session, nodes: list[dict], source_file: str) -> None:
             "SET n += $props "
             "RETURN n.id AS id"
         )
-        result = session.run(cypher, id=node_id, props=props)
+        result = tx.run(cypher, id=node_id, props=props)
         record = result.single()
         logger.info("MERGE node  (%s {id: %r})", label, record["id"] if record else node_id)
 
 
-def _merge_edges(session, edges: list[dict], source_file: str) -> None:
+def _merge_edges(tx, edges: list[dict], source_file: str) -> None:
     for edge in edges:
-        rel_type = edge["type"]
-        from_label = edge["from_label"]
+        rel_type = _validate_identifier(edge["type"], _ALLOWED_REL_TYPES, "relationship type")
+        from_label = _validate_identifier(edge["from_label"], _ALLOWED_NODE_LABELS, "from_label")
         from_id = edge["from_id"]
-        to_label = edge["to_label"]
+        to_label = _validate_identifier(edge["to_label"], _ALLOWED_NODE_LABELS, "to_label")
         to_id = edge["to_id"]
         props = dict(edge.get("properties", {}))
         props["source_file"] = source_file
@@ -69,7 +82,7 @@ def _merge_edges(session, edges: list[dict], source_file: str) -> None:
             "SET r += $props "
             "RETURN type(r) AS rel, a.id AS from_id, b.id AS to_id"
         )
-        result = session.run(cypher, from_id=from_id, to_id=to_id, props=props)
+        result = tx.run(cypher, from_id=from_id, to_id=to_id, props=props)
         record = result.single()
         if record:
             logger.info(
@@ -106,11 +119,14 @@ def main() -> None:
 
     try:
         with driver.session() as session:
-            logger.info("--- Merging %d nodes ---", len(nodes))
-            _merge_nodes(session, nodes, source_file=nodes_path.name)
+            with session.begin_transaction() as tx:
+                logger.info("--- Merging %d nodes ---", len(nodes))
+                _merge_nodes(tx, nodes, source_file=nodes_path.name)
 
-            logger.info("--- Merging %d edges ---", len(edges))
-            _merge_edges(session, edges, source_file=edges_path.name)
+                logger.info("--- Merging %d edges ---", len(edges))
+                _merge_edges(tx, edges, source_file=edges_path.name)
+
+                tx.commit()
 
         logger.info("Graph seed complete.")
     finally:

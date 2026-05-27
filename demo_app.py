@@ -4,12 +4,13 @@ Run: streamlit run demo_app.py
 Requires: pip install streamlit requests
 """
 
+import json
 import time
 
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:8000/v1/ask"
+STREAM_URL = "http://localhost:8000/v1/ask/stream"
 
 EXAMPLE_QUESTIONS = [
     "蝕刻站發生壓力異常時，應該執行哪份 SOP？",
@@ -47,6 +48,10 @@ with st.sidebar:
 - **Guardrails**：4 階段（注入偵測 / 主題過濾 / 證據充分性 / 事實接地）
 """)
 
+    st.divider()
+    st.subheader("API 設定")
+    api_key = st.text_input("API Key（選填）", type="password", placeholder="留空則無認證")
+
     if st.button("清除對話", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
@@ -63,28 +68,24 @@ def render_response(data: dict, elapsed_ms: int | None = None) -> None:
     status = data.get("status", "")
     answer = data.get("answer", "")
 
-    # Status badge + latency
     badge_col, lat_col = st.columns([3, 1])
     with badge_col:
         if status == "blocked":
-            st.error("🚫 已攔截（Topic Guard）")
-        elif status == "answered":
-            st.success("✅ 已回答")
+            st.error("🚫 已攔截（Guardrail）")
+        elif data.get("reasoning_type") == "answered_with_warning":
+            st.warning("⚠ 已回答（事實接地性有疑慮，confidence 0.5）")
         else:
-            st.warning(f"⚠ {status}")
+            st.success("✅ 已回答")
     with lat_col:
         if elapsed_ms:
             st.metric("延遲", f"{elapsed_ms} ms")
 
-    # Answer
     st.markdown(answer)
 
-    # Source docs
     source_docs = data.get("source_docs", [])
     if source_docs:
         st.caption("📄 來源文件：" + "　".join(f"`{d}`" for d in source_docs))
 
-    # Evidence details (collapsible)
     model_triples = data.get("model_triples", [])
     guardrail_results = data.get("guardrail_results", [])
 
@@ -98,7 +99,7 @@ def render_response(data: dict, elapsed_ms: int | None = None) -> None:
         if guardrail_results:
             with st.expander("🛡 Guardrail 結果"):
                 for g in guardrail_results:
-                    icon = "✅" if g.get("pass") else "❌"
+                    icon = "✅" if g.get("passed") else "❌"
                     st.markdown(f"{icon} **{g['name']}** — {g.get('reason', '')}")
 
 
@@ -122,23 +123,78 @@ if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant"):
-        with st.spinner("查詢知識圖譜中..."):
-            try:
-                t0 = time.time()
-                resp = requests.post(API_URL, json={"question": prompt}, timeout=120)
-                elapsed_ms = round((time.time() - t0) * 1000)
-                data = resp.json()
-            except requests.exceptions.ConnectionError:
-                st.error("無法連線至 API（localhost:8000），請確認 docker compose up 已執行。")
-                st.stop()
-            except Exception as e:
-                st.error(f"API 錯誤：{e}")
-                st.stop()
+        token_placeholder = st.empty()
+        accumulated = ""
+        final_data = None
+        elapsed_ms = None
 
-        render_response(data, elapsed_ms)
+        try:
+            t0 = time.time()
+            headers = {"X-API-Key": api_key} if api_key else {}
+            with requests.post(
+                STREAM_URL,
+                json={"question": prompt},
+                headers=headers,
+                stream=True,
+                timeout=120,
+            ) as resp:
+                if resp.status_code != 200:
+                    st.error(f"API 錯誤 {resp.status_code}: {resp.text[:300]}")
+                    st.stop()
+                for raw_line in resp.iter_lines():
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    if not line.startswith("data: "):
+                        continue
+                    event = json.loads(line[6:])
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "data": data,
-        "elapsed_ms": elapsed_ms,
-    })
+                    if event["type"] == "token":
+                        accumulated += event["text"]
+                        # ▌ 游標效果讓使用者知道還在輸出
+                        token_placeholder.markdown(accumulated + "▌")
+
+                    elif event["type"] == "done":
+                        elapsed_ms = round((time.time() - t0) * 1000)
+                        final_data = event
+
+                    elif event["type"] == "blocked":
+                        elapsed_ms = round((time.time() - t0) * 1000)
+                        final_data = {
+                            "status": "blocked",
+                            "answer": event.get("reason", ""),
+                            "reasoning_type": event.get("reasoning_type", "blocked"),
+                            "guardrail_results": event.get("guardrail_results", []),
+                            "source_docs": [],
+                            "model_triples": [],
+                        }
+
+                    elif event["type"] == "error":
+                        elapsed_ms = round((time.time() - t0) * 1000)
+                        final_data = {
+                            "status": "blocked",
+                            "answer": event.get("reason", "LLM 串流中斷，請重試"),
+                            "reasoning_type": "error",
+                            "guardrail_results": [],
+                            "source_docs": [],
+                            "model_triples": [],
+                        }
+
+        except requests.exceptions.ConnectionError:
+            st.error("無法連線至 API（localhost:8000），請確認 docker compose up 已執行。")
+            st.stop()
+        except Exception as e:
+            st.error(f"API 錯誤：{e}")
+            st.stop()
+
+        # 清除串流文字，改用完整 render（含 guardrail 展開區塊）
+        token_placeholder.empty()
+        if final_data:
+            render_response(final_data, elapsed_ms)
+
+    if final_data:
+        st.session_state.messages.append({
+            "role": "assistant",
+            "data": final_data,
+            "elapsed_ms": elapsed_ms,
+        })

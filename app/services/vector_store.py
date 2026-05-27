@@ -1,5 +1,5 @@
 import logging
-from functools import lru_cache
+import threading
 
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -7,6 +7,15 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_embeddings: HuggingFaceEmbeddings | None = None
+_reranker_embeddings: HuggingFaceEmbeddings | None = None
+_vector_store: Chroma | None = None
+# Three separate locks to prevent deadlock: _get_vector_store calls _get_embeddings
+# while holding its own lock, so a single shared Lock would deadlock.
+_embeddings_lock = threading.Lock()
+_reranker_lock = threading.Lock()
+_vector_store_lock = threading.Lock()
 
 
 def _cuda_kwargs() -> dict:
@@ -22,33 +31,49 @@ def _cuda_kwargs() -> dict:
     return {"device": "cpu"}
 
 
-@lru_cache(maxsize=1)
 def _get_embeddings() -> HuggingFaceEmbeddings:
-    """Lazy-init the Chroma embedding model (used for entity extraction)."""
-    logger.info("Loading embedding model: %s", settings.embedding_model)
-    return HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_cuda_kwargs())
+    """Lazy-init the Chroma embedding model; singleton with double-checked locking."""
+    global _embeddings
+    if _embeddings is None:
+        with _embeddings_lock:
+            if _embeddings is None:
+                logger.info("Loading embedding model: %s", settings.embedding_model)
+                _embeddings = HuggingFaceEmbeddings(
+                    model_name=settings.embedding_model, model_kwargs=_cuda_kwargs()
+                )
+    return _embeddings
 
 
-@lru_cache(maxsize=1)
 def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
-    """Lazy-init the reranker embedding model (used for graph triple scoring).
+    """Lazy-init the reranker embedding model; singleton with double-checked locking.
 
     Falls back to the Chroma embedding model when RERANKER_MODEL is not set.
     """
-    model = settings.reranker_model or settings.embedding_model
-    logger.info("Loading reranker model: %s", model)
-    return HuggingFaceEmbeddings(model_name=model, model_kwargs=_cuda_kwargs())
+    global _reranker_embeddings
+    if _reranker_embeddings is None:
+        with _reranker_lock:
+            if _reranker_embeddings is None:
+                model = settings.reranker_model or settings.embedding_model
+                logger.info("Loading reranker model: %s", model)
+                _reranker_embeddings = HuggingFaceEmbeddings(
+                    model_name=model, model_kwargs=_cuda_kwargs()
+                )
+    return _reranker_embeddings
 
 
-@lru_cache(maxsize=1)
 def _get_vector_store() -> Chroma:
-    """Lazy-init the vector store; cached after first call."""
-    logger.info("Opening Chroma store at: %s", settings.chroma_dir)
-    return Chroma(
-        persist_directory=settings.chroma_dir,
-        embedding_function=_get_embeddings(),
-        collection_name="sop_docs",
-    )
+    """Lazy-init the vector store; singleton with double-checked locking."""
+    global _vector_store
+    if _vector_store is None:
+        with _vector_store_lock:
+            if _vector_store is None:
+                logger.info("Opening Chroma store at: %s", settings.chroma_dir)
+                _vector_store = Chroma(
+                    persist_directory=settings.chroma_dir,
+                    embedding_function=_get_embeddings(),
+                    collection_name="sop_docs",
+                )
+    return _vector_store
 
 
 def similarity_search(question: str, k: int = 4) -> list[str]:

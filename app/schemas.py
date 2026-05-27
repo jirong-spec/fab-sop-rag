@@ -51,7 +51,7 @@ class AskResponse(BaseModel):
     reasoning_type: str = Field(
         ...,
         description=(
-            "graph_rag | baseline_rag | blocked_injection | blocked_off_topic "
+            "graph_rag | vector_rag | blocked_injection | blocked_off_topic "
             "| blocked_low_evidence | answered_with_warning"
         ),
     )
@@ -64,8 +64,8 @@ class AskResponse(BaseModel):
 
 class IngestRequest(BaseModel):
     source_file: str = Field(..., min_length=1, max_length=200, description="來源檔案名稱，用於 graph versioning")
-    nodes: list[dict] = Field(..., description="節點列表，格式同 data/graph_seed/nodes.json")
-    edges: list[dict] = Field(..., description="邊列表，格式同 data/graph_seed/edges.json")
+    nodes: list[dict] = Field(..., max_length=1000, description="節點列表，格式同 data/graph_seed/nodes.json")
+    edges: list[dict] = Field(..., max_length=2000, description="邊列表，格式同 data/graph_seed/edges.json")
 
 
 class IngestResponse(BaseModel):

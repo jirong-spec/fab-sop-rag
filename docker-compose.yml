@@ -25,9 +25,11 @@ services:
             - driver: nvidia
               device_ids: ["0"]
               capabilities: [gpu]
+        limits:
+          memory: "6g"
     volumes:
       - chroma_data:/data/chroma
-      - hf_cache:/root/.cache/huggingface   # caches the embedding model
+      - hf_cache:/app/.cache/huggingface   # caches the embedding model
     depends_on:
       neo4j:
         condition: service_healthy
@@ -63,7 +65,10 @@ services:
       - neo4j_logs:/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      # Probe the database availability endpoint (7474) which returns 200 only
+      # once the Bolt listener on 7687 is also ready — more reliable than the
+      # plain HTTP server startup check.
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474/ || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -90,7 +95,7 @@ services:
       HF_HUB_OFFLINE: "1"
 
     volumes:
-      - /home/jimmy/models:/llm:ro
+      - ${LLM_MODEL_DIR:-/opt/models}:/llm:ro
 
     ports:
       - "8299:8000"

@@ -94,18 +94,31 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
     except Exception as e:
         print(f"[WARNING] Pre-warm failed (non-fatal): {e}")
 
+    # Timing wrappers measure elapsed time inside the thread, so latency
+    # reflects actual execution and not time spent waiting for the sibling future.
+    def _timed_graph(r):
+        t = time.perf_counter()
+        result = run_pipeline(r)
+        return result, int((time.perf_counter() - t) * 1000)
+
+    def _timed_vector(r):
+        t = time.perf_counter()
+        result, sl = run_vector_pipeline(r)
+        return result, sl, int((time.perf_counter() - t) * 1000)
+
     results = []
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         for q in queries:
             req = AskRequest(question=q["question"], enable_guards=True, top_k=4, max_hop=2)
             qid = q["id"]
 
+            # Submit both pipelines in parallel
+            g_fut = pool.submit(_timed_graph, req)
+            v_fut = pool.submit(_timed_vector, req) if run_vector else None
+
             # ── Graph RAG ──────────────────────────────────────────────────
-            t0 = time.perf_counter()
-            fut = pool.submit(run_pipeline, req)
             try:
-                gr = fut.result(timeout=QUERY_TIMEOUT_SEC)
-                g_ms = int((time.perf_counter() - t0) * 1000)
+                gr, g_ms = g_fut.result(timeout=QUERY_TIMEOUT_SEC)
                 graph_entry = {
                     "status": gr.status, "reasoning_type": gr.reasoning_type,
                     "latency_ms": g_ms, "answer": gr.answer,
@@ -119,19 +132,24 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
                     "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
                     "evidence_triples": [], "model_triples": [], "entities": [],
                 }
+            except Exception as exc:
+                print(f"[WARNING] Graph RAG error on {qid}: {exc}")
+                graph_entry = {
+                    "status": "error", "reasoning_type": "error",
+                    "latency_ms": 0, "answer": f"[ERROR] {exc}",
+                    "evidence_triples": [], "model_triples": [], "entities": [],
+                }
 
             # ── Vector RAG ─────────────────────────────────────────────────
             vector_entry = None
-            if run_vector:
-                t0 = time.perf_counter()
-                fut = pool.submit(run_vector_pipeline, req)
+            if v_fut is not None:
                 try:
-                    vr, sl = fut.result(timeout=QUERY_TIMEOUT_SEC)
-                    v_ms = int((time.perf_counter() - t0) * 1000)
+                    vr, sl, v_ms = v_fut.result(timeout=QUERY_TIMEOUT_SEC)
                     vector_entry = {
                         "status": vr.status, "reasoning_type": vr.reasoning_type,
                         "latency_ms": v_ms, "answer": vr.answer,
                         "model_triples": vr.model_triples,
+                        "evidence_triples": vr.evidence_triples,
                         "stage_latencies": sl,
                     }
                 except FuturesTimeoutError:
@@ -139,7 +157,14 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
                     vector_entry = {
                         "status": "error", "reasoning_type": "timeout",
                         "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
-                        "model_triples": [], "stage_latencies": {},
+                        "model_triples": [], "evidence_triples": [], "stage_latencies": {},
+                    }
+                except Exception as exc:
+                    print(f"[WARNING] Vector RAG error on {qid}: {exc}")
+                    vector_entry = {
+                        "status": "error", "reasoning_type": "error",
+                        "latency_ms": 0, "answer": f"[ERROR] {exc}",
+                        "model_triples": [], "evidence_triples": [], "stage_latencies": {},
                     }
 
             results.append({"id": qid, "graph": graph_entry, "vector": vector_entry})
@@ -177,8 +202,12 @@ def render_report(queries: list[dict], results: dict) -> str:
             ok = "✅" if g_score["correct_block"] else "❌"
             if g_score["correct_block"]:
                 block_hits += 1
-            v_col = f"{v_ms:>5}ms" if v_resp else "  n/a "
-            rows.append(f"  {qid} │ {q['category'][:28]:<28}{tag:<7} │ {ok} blocked   {g_ms:>5}ms │ {ok} blocked   {v_col}")
+            if v_resp and v_score:
+                v_ok = "✅" if v_score.get("correct_block") else "❌"
+                v_col = f"{v_ok} blocked   {v_ms:>5}ms"
+            else:
+                v_col = "  n/a "
+            rows.append(f"  {qid} │ {q['category'][:28]:<28}{tag:<7} │ {ok} blocked   {g_ms:>5}ms │ {v_col}")
         else:
             gh, gt = g_score["keyword_hits"], g_score["keyword_total"]
             grh = g_score["retrieval_hits"]
@@ -226,7 +255,7 @@ def render_report(queries: list[dict], results: dict) -> str:
     ]
     if has_vector:
         lines.append(
-            f"  Vector RAG │ A:{v_kw_hits}/{v_kw_total}({v_kw_pct:.0f}%)  avg {v_avg}ms  │  Graph overhead: Δ+{delta_avg}ms"
+            f"  Vector RAG │ A:{v_kw_hits}/{v_kw_total}({v_kw_pct:.0f}%)  avg {v_avg}ms  │  Graph overhead: Δ{'+' if delta_avg >= 0 else ''}{delta_avg}ms"
         )
     lines += [
         sep, "",

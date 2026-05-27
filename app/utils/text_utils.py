@@ -21,9 +21,10 @@ import re
 # Captures: EtchStation_SOP_001, SOP_Etch_001, CheckVacuumPump_Step1
 _ENTITY_CODE = re.compile(r"[A-Z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+")
 
-# CamelCase / TitleCase compound words (≥ 3 chars to skip short abbreviations).
+# Multi-word CamelCase compounds — requires ≥ 2 capitalised components so
+# sentence-starting words like "What", "How", "Please" are not captured.
 # Captures: EtchStation, VacuumPump, PressureAnomaly, RecipeParameter
-_TITLE_CASE = re.compile(r"[A-Z][A-Za-z]{2,}")
+_TITLE_CASE = re.compile(r"[A-Z][a-z]+(?:[A-Z][a-z]+)+")
 
 # ALL-CAPS acronyms of 2-6 letters common in semiconductor manufacturing.
 # Captures: CVD, CMP, SOP, ALD, PVD, ICP, RIE, LPCVD, PECVD

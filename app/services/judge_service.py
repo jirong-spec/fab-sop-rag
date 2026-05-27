@@ -134,7 +134,7 @@ def judge_grounding(answer: str, triples: list[str]) -> dict[str, bool | str]:
     pass in a fab SOP context: a hallucinated step in a fault-handling procedure
     could mislead an engineer during a time-critical troubleshooting sequence.
     """
-    context = "\n".join(triples) if triples else "（無圖譜證據）"
+    context = "\n".join(triples[:30]) if triples else "（無圖譜證據）"
     prompt = _GROUNDING_PROMPT.format(context=context, answer=answer)
     try:
         raw = chat_completion(prompt, temperature=0.0, max_tokens=256)

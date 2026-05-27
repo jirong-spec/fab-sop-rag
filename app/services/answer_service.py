@@ -51,6 +51,7 @@ def _score_triples(
 
 _NO_INFO_ANSWER = "此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
 _LLM_ERROR_ANSWER = "（LLM 服務暫時無法使用，請稍後再試）"
+LLM_ERROR_ANSWER = _LLM_ERROR_ANSWER  # exported sentinel for pipeline error detection
 
 _PROMPT_TEMPLATE = """\
 你是一位嚴謹的晶圓廠 SOP 知識查詢助理，專門協助製程、設備與整合工程師查詢 SOP 文件。
@@ -98,6 +99,7 @@ def _prepare_generation(
     Returns (prompt, model_triples).  Pure CPU/embedding — no LLM call.
     """
     scored_all = _score_triples(question, triples, entities=entities)
+    threshold = 0
     if scored_all:
         threshold = max(int(scored_all[0][0] * 0.50), 20)
         scored = [item for item in scored_all if item[0] >= threshold]
@@ -106,7 +108,7 @@ def _prepare_generation(
             scored = scored_all[:5]
     else:
         scored = scored_all
-    logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold if scored_all else 0)
+    logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold)
     model_triples = [triple for _, triple in scored]
 
     sop_ids = re.findall(r'SOP_\w+', question)

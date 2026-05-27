@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.config import APP_VERSION
 from app.logging_config import setup_logging
 from app.middleware.request_id import RequestIDMiddleware
 from app.api.routes import root_router, v1_router
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Fab SOP Knowledge Query API starting up (version 1.0.0)")
+    logger.info("Fab SOP Knowledge Query API starting up (version %s)", APP_VERSION)
     # Pre-warm all heavy resources so the first real request has normal latency.
     try:
         from app.services.vector_store import _get_vector_store, _get_embeddings, _get_reranker_embeddings
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Fab SOP Knowledge Query API",
+    version=APP_VERSION,
     description=(
         "Single-machine Enterprise MVP for querying a **wafer fab SOP document knowledge base** "
         "via hybrid Graph + Vector RAG.\n\n"
@@ -58,7 +60,6 @@ app = FastAPI(
         "**Internal use only.** No document-level access control. "
         "Do not use for automated fab operations."
     ),
-    version="1.0.0",
     lifespan=lifespan,
 )
 

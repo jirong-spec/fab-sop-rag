@@ -1,5 +1,5 @@
 import logging
-from functools import lru_cache
+import threading
 
 from neo4j import GraphDatabase, Driver
 from neo4j.exceptions import ServiceUnavailable, SessionExpired
@@ -16,15 +16,22 @@ _neo4j_retry = retry(
     reraise=True,
 )
 
+_driver: Driver | None = None
+_driver_lock = threading.Lock()
 
-@lru_cache(maxsize=1)
+
 def _get_driver() -> Driver:
-    """Lazy-init the Neo4j driver; cached after first call."""
-    logger.info("Connecting to Neo4j at %s", settings.neo4j_uri)
-    return GraphDatabase.driver(
-        settings.neo4j_uri,
-        auth=(settings.neo4j_username, settings.neo4j_password),
-    )
+    """Lazy-init the Neo4j driver; singleton with double-checked locking."""
+    global _driver
+    if _driver is None:
+        with _driver_lock:
+            if _driver is None:
+                logger.info("Connecting to Neo4j at %s", settings.neo4j_uri)
+                _driver = GraphDatabase.driver(
+                    settings.neo4j_uri,
+                    auth=(settings.neo4j_username, settings.neo4j_password),
+                )
+    return _driver
 
 
 def _node_label(node) -> str:
@@ -69,7 +76,13 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
         with driver.session() as session:
             return list(session.run(query, ents=entities))
 
-    for record in _query():
+    records = _query()
+    if len(records) == 200:
+        logger.warning(
+            "graph_expand hit LIMIT 200 for entities=%s hop=%d — results may be truncated",
+            entities, hop,
+        )
+    for record in records:
             path = record["p"]
             for rel in path.relationships:
                 start_name = _node_label(rel.start_node)

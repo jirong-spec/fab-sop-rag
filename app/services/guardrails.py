@@ -37,7 +37,12 @@ from app.services.judge_service import judge_topic_relevance, judge_grounding  #
 # SOP entity code pattern: SOP_Etch_001, CheckVacuumPump, TurboVacuumPump, etc.
 # If the question explicitly references a known fab SOP entity, it is unambiguously
 # in-domain — bypass the LLM judge to avoid false negatives from small models.
-_SOP_ENTITY_RE = re.compile(r"[A-Z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+")
+# Pattern breakdown:
+#   SOP_[A-Za-z0-9_]+ — explicit SOP doc/step IDs (SOP_Etch_001, SOP_Pump_002)
+#   (?:[A-Z][a-z][A-Za-z0-9]*){2,} — multi-word CamelCase compounds (CheckVacuumPump,
+#       EtchStation); requires ≥2 capitalised words each with a lowercase letter,
+#       preventing short acronyms like "US", "HTTP" from triggering a false pass.
+_SOP_ENTITY_RE = re.compile(r"SOP_[A-Za-z0-9_]+|(?:[A-Z][a-z][A-Za-z0-9]*){2,}")
 
 logger = logging.getLogger(__name__)
 

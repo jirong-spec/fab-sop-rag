@@ -17,11 +17,11 @@ import time
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.auth import require_api_key
-from app.config import settings
+from app.config import APP_VERSION, settings
 from app.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse, IngestRequest, IngestResponse, ServiceStatus
 from app.services.pipeline import run_pipeline, run_pipeline_stream
 from app.utils.context import get_request_id
@@ -84,10 +84,20 @@ async def _probe_vllm() -> ServiceStatus:
 
 
 def _probe_chroma() -> ServiceStatus:
-    p = Path(settings.chroma_dir)
-    if p.exists() and p.is_dir():
-        return ServiceStatus(status="ok")
-    return ServiceStatus(status="down", detail=f"Directory not found: {settings.chroma_dir}")
+    try:
+        from app.services.vector_store import _get_vector_store
+        t0 = time.perf_counter()
+        db = _get_vector_store()
+        count = len(db.get(include=[])["ids"])
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        if count == 0:
+            return ServiceStatus(
+                status="degraded", latency_ms=latency_ms,
+                detail="sop_docs collection is empty — run vector ingest first",
+            )
+        return ServiceStatus(status="ok", latency_ms=latency_ms)
+    except Exception as exc:
+        return ServiceStatus(status="down", detail=str(exc)[:120])
 
 
 @v1_router.get(
@@ -137,7 +147,7 @@ async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
 
     body = HealthResponse(
         status=overall,
-        version="1.0.0",
+        version=APP_VERSION,
         services=services,
         request_id=req_id,
     )
@@ -200,27 +210,42 @@ async def ask_stream(
     _: None = Depends(require_api_key),
 ) -> StreamingResponse:
     logger.info("POST /v1/ask/stream | question=%r", req.question[:80])
+    req_id = get_request_id()
 
     async def _generate():
+        import contextvars
         import threading
-        loop = asyncio.get_event_loop()
-        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
         _SENTINEL = object()
+        cancelled = threading.Event()
+        ctx = contextvars.copy_context()  # carry request_id into the thread
 
         def _run_sync():
             try:
-                for event in run_pipeline_stream(req):
-                    loop.call_soon_threadsafe(queue.put_nowait, event)
+                for event in run_pipeline_stream(req, request_id=req_id):
+                    if cancelled.is_set():
+                        break
+                    try:
+                        loop.call_soon_threadsafe(queue.put_nowait, event)
+                    except (RuntimeError, asyncio.QueueFull):
+                        break
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+                try:
+                    loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+                except RuntimeError:
+                    pass
 
-        threading.Thread(target=_run_sync, daemon=True).start()
+        threading.Thread(target=lambda: ctx.run(_run_sync), daemon=True).start()
 
-        while True:
-            item = await queue.get()
-            if item is _SENTINEL:
-                break
-            yield item
+        try:
+            while True:
+                item = await queue.get()
+                if item is _SENTINEL:
+                    break
+                yield item
+        finally:
+            cancelled.set()
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
@@ -250,48 +275,65 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
     edges_merged = 0
     edges_skipped = 0
 
-    with driver.session() as session:
-        for node in req.nodes:
-            raw_label = node.get("label", "Node")
-            label = _validate_identifier(raw_label, _ALLOWED_NODE_LABELS, "node label")
-            props = dict(node.get("properties", {}))
-            props["source_file"] = req.source_file
-            node_id = props.get("id", "")
-            cypher = (
-                f"MERGE (n:{label} {{id: $id}}) "
-                "SET n += $props "
-                "RETURN n.id AS id"
-            )
-            session.run(cypher, id=node_id, props=props)
-            nodes_merged += 1
+    try:
+        with driver.session() as session:
+            with session.begin_transaction() as tx:
+                for node in req.nodes:
+                    raw_label = node.get("label", "Node")
+                    label = _validate_identifier(raw_label, _ALLOWED_NODE_LABELS, "node label")
+                    props = dict(node.get("properties", {}))
+                    props["source_file"] = req.source_file
+                    node_id = props.get("id", "")
+                    if not node_id:
+                        raise HTTPException(status_code=422, detail=f"Node missing 'id' property: {node}")
+                    cypher = (
+                        f"MERGE (n:{label} {{id: $id}}) "
+                        "SET n += $props "
+                        "RETURN n.id AS id"
+                    )
+                    tx.run(cypher, id=node_id, props=props)
+                    nodes_merged += 1
 
-        for edge in req.edges:
-            raw_rel = edge.get("type", "RELATES_TO")
-            rel_type = _validate_identifier(raw_rel, _ALLOWED_REL_TYPES, "relationship type")
-            raw_from = edge.get("from_label", "")
-            raw_to = edge.get("to_label", "")
-            from_label = _validate_identifier(raw_from, _ALLOWED_NODE_LABELS, "from_label") if raw_from else ""
-            to_label = _validate_identifier(raw_to, _ALLOWED_NODE_LABELS, "to_label") if raw_to else ""
-            from_id = edge.get("from_id", "")
-            to_id = edge.get("to_id", "")
-            props = dict(edge.get("properties", {}))
-            props["source_file"] = req.source_file
+                for edge in req.edges:
+                    raw_rel = edge.get("type", "RELATES_TO")
+                    rel_type = _validate_identifier(raw_rel, _ALLOWED_REL_TYPES, "relationship type")
+                    raw_from = edge.get("from_label", "")
+                    raw_to = edge.get("to_label", "")
+                    from_label = _validate_identifier(raw_from, _ALLOWED_NODE_LABELS, "from_label") if raw_from else ""
+                    to_label = _validate_identifier(raw_to, _ALLOWED_NODE_LABELS, "to_label") if raw_to else ""
+                    from_id = edge.get("from_id", "")
+                    to_id = edge.get("to_id", "")
+                    props = dict(edge.get("properties", {}))
+                    props["source_file"] = req.source_file
 
-            match_clause = (
-                f"MATCH (a{':' + from_label if from_label else ''} {{id: $from_id}}) "
-                f"MATCH (b{':' + to_label if to_label else ''} {{id: $to_id}}) "
-            )
-            cypher = (
-                match_clause
-                + f"MERGE (a)-[r:{rel_type}]->(b) "
-                + "SET r += $props "
-                + "RETURN type(r) AS rel"
-            )
-            result = session.run(cypher, from_id=from_id, to_id=to_id, props=props)
-            if result.single():
-                edges_merged += 1
-            else:
-                edges_skipped += 1
+                    match_clause = (
+                        f"MATCH (a{':' + from_label if from_label else ''} {{id: $from_id}}) "
+                        f"MATCH (b{':' + to_label if to_label else ''} {{id: $to_id}}) "
+                    )
+                    cypher = (
+                        match_clause
+                        + f"MERGE (a)-[r:{rel_type}]->(b) "
+                        + "SET r += $props "
+                        + "RETURN type(r) AS rel"
+                    )
+                    result = tx.run(cypher, from_id=from_id, to_id=to_id, props=props)
+                    if result.single():
+                        edges_merged += 1
+                    else:
+                        edges_skipped += 1
+
+                tx.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error("Ingest failed | source=%s error=%s", req.source_file, exc)
+        return IngestResponse(
+            status="error",
+            nodes_merged=nodes_merged,
+            edges_merged=edges_merged,
+            edges_skipped=edges_skipped,
+            detail=str(exc)[:200],
+        )
 
     logger.info(
         "Ingest complete | source=%s nodes=%d edges=%d skipped=%d",

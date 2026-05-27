@@ -10,31 +10,31 @@
 
 ## 一、評估結果
 
-### 最終成績（Qwen2.5-7B-Instruct-AWQ-int4，2026-05-26）
+### 最終成績（Qwen2.5-7B-Instruct-AWQ-int4，2026-05-27）
 
 | 指標 | Graph RAG | Vector RAG | 差距 |
 |------|-----------|------------|------|
 | **Retrieval 命中率** | **100%** (24/24) | — | — |
-| **Answer 命中率** | **100%** (24/24) | 50.0% (12/24) | **+50.0 pp** |
+| **Answer 命中率** | **100%** (24/24) | 54.2% (13/24) | **+45.8 pp** |
 | **多跳查詢 Answer** | **100%** (8/8) | 25.0% (2/8) | **+75.0 pp** |
 | **正確攔截非 SOP 問題** | 2/2 | 2/2 | — |
-| **平均端對端延遲** | 2982 ms | 2785 ms | +197 ms |
+| **平均端對端延遲** | 3946 ms | 3695 ms | +251 ms |
 
 ```
 ID   │ 類別                        │ R / A        │  Graph 延遲  │ Vector 延遲
 ─────┼─────────────────────────────┼──────────────┼─────────────┼────────────
-q01  │ anomaly_handling            │ R✅ A✅ 2/2  │  3263 ms    │  3070 ms
-q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4  │  4716 ms    │  3162 ms ❌
-q03  │ equipment_precondition      │ R✅ A✅ 4/4  │  3952 ms    │  3747 ms ✅
-q04  │ step_dependency             │ R✅ A✅ 3/3  │  2564 ms    │  2931 ms ✅
-q05  │ cross_doc_dependency [↑HOP] │ R✅ A✅ 2/2  │  2485 ms    │  3301 ms ✅
-q06  │ interlock_condition         │ R✅ A✅ 3/3  │  5422 ms    │  4049 ms ⚠
-q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2  │  3315 ms    │  3287 ms ❌
-q08  │ off_topic_blocked           │ ✅ blocked   │   584 ms    │   588 ms ✅
-q09  │ off_topic_blocked           │ ✅ blocked   │   666 ms    │   668 ms ✅
-q10  │ pump_check_sequence         │ R✅ A✅ 4/4  │  2856 ms    │  3055 ms ⚠
+q01  │ anomaly_handling            │ R✅ A✅ 2/2  │  4623 ms    │  3311 ms ✅
+q02  │ sop_step_sequence  [↑HOP]   │ R✅ A✅ 4/4  │  4515 ms    │  4385 ms ❌
+q03  │ equipment_precondition      │ R✅ A✅ 4/4  │  5432 ms    │  4399 ms ✅
+q04  │ step_dependency             │ R✅ A✅ 3/3  │  4238 ms    │  4285 ms ✅
+q05  │ cross_doc_dependency [↑HOP] │ R✅ A✅ 2/2  │  3293 ms    │  5150 ms ✅
+q06  │ interlock_condition         │ R✅ A✅ 3/3  │  6668 ms    │  4144 ms ⚠
+q07  │ vent_procedure      [↑HOP]  │ R✅ A✅ 2/2  │  4716 ms    │  4982 ms ❌
+q08  │ off_topic_blocked           │ ✅ blocked   │   845 ms    │   845 ms ✅
+q09  │ off_topic_blocked           │ ✅ blocked   │   877 ms    │   923 ms ✅
+q10  │ pump_check_sequence         │ R✅ A✅ 4/4  │  4257 ms    │  4526 ms ⚠
 ─────┼─────────────────────────────┼──────────────┼─────────────┼────────────
-     │ TOTALS                      │ R 100% A 100%│ avg 2982 ms │ avg 2785 ms
+     │ TOTALS                      │ R 100% A 100%│ avg 3946 ms │ avg 3695 ms
 ```
 
 Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
@@ -110,10 +110,17 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 [Guard 2] 主題過濾（LLM-as-judge）
  │
  ▼
- ├─ 實體抽取 → Neo4j Cypher 圖譜遍歷
- └─ 語意向量 → Chroma 相似度搜尋
+實體抽取
+ ├─ 問題本身的 CamelCase / SOP_ID token
+ └─ Chroma 相似度搜尋（輔助擴充實體候選詞）
          │
-         ▼ bi-encoder reranking + 動態 cap
+         ▼ 實體列表
+Neo4j Cypher 圖譜遍歷（hop=1–4）
+         │
+         ▼ evidence triples（全量）
+bi-encoder reranking + 動態 cap → model triples（送入 LLM）
+         │
+         ▼
 [Guard 3] 證據充足性（triple 數量）
          │
          ▼
@@ -131,7 +138,7 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 | 服務 | 技術 | 功能 |
 |------|------|------|
 | `api` | FastAPI + Python 3.12 | RAG pipeline + 4 道 guardrail |
-| `neo4j` | Neo4j 5 | SOP 知識圖譜（29 節點、48 條邊） |
+| `neo4j` | Neo4j 5 | SOP 知識圖譜（57 節點、92 條邊） |
 | `vllm` | vLLM + Qwen2.5-7B-Instruct-AWQ-int4 | 本地 LLM 推論（OpenAI 相容） |
 
 ---
@@ -152,6 +159,8 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 ```bash
 # 1. 設定環境變數
 cp .env.example .env
+# 編輯 .env，將 LLM_MODEL_DIR 設為本機模型目錄（預設 /opt/models）
+# LLM_MODEL_DIR=/home/your-user/models
 
 # 2. 啟動服務（第一次約 5–15 分鐘，vLLM 載入模型）
 docker compose up --build -d
@@ -219,6 +228,24 @@ curl -X POST http://localhost:8000/v1/ask \
 | `blocked_off_topic` | Guard 2 擋住 |
 | `blocked_low_evidence` | Guard 3 擋住 |
 
+### POST /v1/ask/stream
+
+與 `/v1/ask` 相同的 guardrail pipeline，但 LLM 輸出以 **Server-Sent Events** 串流傳回，第一個 token 在 200ms 內到達。
+
+```bash
+curl -N -X POST http://localhost:8000/v1/ask/stream \
+  -H "Content-Type: application/json" \
+  -d '{"question": "SOP_Etch_001 的步驟順序為何？"}'
+```
+
+**事件格式：**
+
+| type | 說明 |
+|------|------|
+| `token` | `{"type":"token","text":"..."}` — 每個 LLM 輸出 token |
+| `done` | 最終結果（含 entities、evidence_triples、guardrail_results） |
+| `blocked` | 被 guardrail 擋下（含 reason） |
+
 ### 其他端點
 
 | 端點 | 說明 |
@@ -245,15 +272,18 @@ curl -X POST http://localhost:8000/v1/ask \
 
 ```
 data/
-├── sop_docs/                     # 原始 SOP Markdown（向量庫用）
-│   ├── etch_pressure_anomaly.md  # SOP_Etch_001
-│   ├── vacuum_pump_check.md      # SOP_Pump_002
-│   └── chamber_vent_procedure.md # SOP_Vent_003
+├── sop_docs/                        # 原始 SOP Markdown（向量庫用）
+│   ├── etch_pressure_anomaly.md     # SOP_Etch_001
+│   ├── vacuum_pump_check.md         # SOP_Pump_002
+│   ├── chamber_vent_procedure.md    # SOP_Vent_003
+│   ├── edwards_nxds_fault.md        # nXDS 幫浦故障處理
+│   ├── edwards_nxds_shutdown.md     # nXDS 幫浦關機程序
+│   └── edwards_nxds_startup.md     # nXDS 幫浦啟動程序
 ├── graph_seed/
-│   ├── nodes.json                # 29 個節點
-│   └── edges.json                # 48 條邊
+│   ├── nodes.json                   # 29 個節點
+│   └── edges.json                   # 48 條邊
 └── sample_queries/
-    └── fab_queries.json          # 10 道測試題（含預期關鍵字）
+    └── fab_queries.json             # 10 道測試題（含預期關鍵字）
 ```
 
 **知識圖譜 Schema：**
@@ -296,20 +326,20 @@ docker compose run --rm api python scripts/ingest_all.py
 **常用 Cypher：**
 
 ```cypher
--- 看整張圖
+// 看整張圖
 MATCH p = (n)-[r]->(m) RETURN p
 
--- SOP_Etch_001 步驟順序
+// SOP_Etch_001 步驟順序
 MATCH p = (d:SOPDocument {id:"SOP_Etch_001"})-[:FIRST_STEP|NEXT_STEP*]->(s)
 RETURN p
 
--- 異常觸發哪份 SOP
+// 異常觸發哪份 SOP
 MATCH p = (a:Anomaly)-[:TRIGGERS_SOP]->(d:SOPDocument)
 RETURN p
 
--- 確認資料筆數
-MATCH (n) RETURN count(n)        // 29
-MATCH ()-[r]->() RETURN count(r) // 48
+// 確認資料筆數
+MATCH (n) RETURN count(n)        // 57
+MATCH ()-[r]->() RETURN count(r) // 92
 ```
 
 ---
@@ -321,7 +351,10 @@ MATCH ()-[r]->() RETURN count(r) // 48
 docker compose logs vllm | tail -30
 ```
 - `CUDA out of memory` → GPU VRAM 不足
-- `model not found` → 確認模型路徑
+- `model not found` / `HFValidationError` → 確認 `.env` 中 `LLM_MODEL_DIR` 指向正確的本機模型目錄，例如：
+  ```
+  LLM_MODEL_DIR=/home/your-user/models
+  ```
 
 **`/v1/ask` 回傳 500？**
 ```bash

@@ -7,6 +7,7 @@ Request ID middleware.
 - Echoes the ID back in the X-Request-ID response header.
 """
 
+import re
 import uuid
 import logging
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -26,7 +27,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Accept a client-supplied ID (useful for end-to-end tracing) or mint a new one.
-        req_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())[:8]
+        # Strip non-safe characters to prevent log injection via ANSI codes / newlines.
+        raw_id = request.headers.get(REQUEST_ID_HEADER, "")
+        req_id = re.sub(r"[^A-Za-z0-9\-_]", "", raw_id)[:32] if raw_id else str(uuid.uuid4())[:8]
         token = request_id_var.set(req_id)
         request.state.request_id = req_id
         try:

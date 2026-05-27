@@ -11,7 +11,7 @@ from app.services.guardrails import (
     guard_grounding,
 )
 from app.services.retrieval_service import retrieve
-from app.services.answer_service import generate_answer, generate_answer_stream
+from app.services.answer_service import generate_answer, generate_answer_stream, LLM_ERROR_ANSWER
 from app.utils.text_utils import extract_source_docs
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,10 @@ def run_pipeline(req: AskRequest) -> AskResponse:
     stage_latencies["generation"] = int((time.perf_counter() - _ts) * 1000)
     logger.info("Answer generated | preview=%r", answer[:80])
 
+    if answer == LLM_ERROR_ANSWER:
+        return _blocked(req, guardrail_results, "llm_error", answer, t0,
+                        entities=entities, triples=triples)
+
     # ── Output Guard ──────────────────────────────────────────────────────────
     reasoning_type = "graph_rag"
     confidence = 1.0
@@ -125,7 +129,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
 # Streaming pipeline
 # ---------------------------------------------------------------------------
 
-def run_pipeline_stream(req: AskRequest) -> Iterator[str]:
+def run_pipeline_stream(req: AskRequest, request_id: str = "-") -> Iterator[str]:
     """
     Streaming variant of run_pipeline.
 
@@ -187,6 +191,17 @@ def run_pipeline_stream(req: AskRequest) -> Iterator[str]:
         yield _sse({"type": "error", "status": "error", "reason": "LLM 串流中斷，請重試"})
         return
 
+    if full_answer == LLM_ERROR_ANSWER:
+        yield _sse({
+            "type": "done", "status": "error", "answer": full_answer,
+            "reasoning_type": "llm_error", "confidence": 0.0,
+            "entities": entities, "evidence_triples": triples,
+            "model_triples": [], "source_docs": [],
+            "guardrail_results": [r.model_dump() for r in guardrail_results],
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+        })
+        return
+
     # ── Output Guard (after last token) ───────────────────────────────────
     reasoning_type = "graph_rag"
     confidence = 1.0
@@ -209,8 +224,9 @@ def run_pipeline_stream(req: AskRequest) -> Iterator[str]:
         "evidence_triples": triples,
         "model_triples": model_triples,
         "source_docs": extract_source_docs(triples),
-        "guardrail_results": [r.model_dump() for r in guardrail_results],
+        "guardrail_results": [r.model_dump(by_alias=True) for r in guardrail_results],
         "latency_ms": latency_ms,
+        "request_id": request_id,
     })
 
 
