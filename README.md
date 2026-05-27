@@ -173,6 +173,22 @@ curl http://localhost:8000/health
 # → {"status":"ok"}
 ```
 
+### 啟動 Demo UI（Streamlit）
+
+```bash
+pip install streamlit requests
+streamlit run demo_app.py
+```
+
+開啟 `http://localhost:8501`，功能包含：
+- 側邊欄快速範例題一鍵帶入
+- 串流輸出（token-by-token，含游標效果）
+- 展開檢視送入 LLM 的圖譜關係（model_triples）
+- 展開檢視 4 道 guardrail 結果
+- API Key 輸入（若有設定 `API_KEY`）
+
+> **前提**：`docker compose up -d` 已執行，API 在 `localhost:8000`。
+
 ### 執行評測
 
 ```bash
