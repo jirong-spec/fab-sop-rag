@@ -10,7 +10,10 @@
 
 ## 一、評估結果
 
-### 最終成績（Qwen2.5-7B-Instruct-AWQ-int4，2026-05-27）
+### Graph RAG vs Vector RAG（keyword 比對 · 10 題 · Qwen2.5-7B-Instruct-AWQ-int4）
+
+> 此表為 **Graph vs Vector 基線比較**，採 keyword 子字串比對、且調參與評測為同一批題（dev=test），
+> 會高估泛化能力。更嚴謹的 held-out + LLM-judge 評估見下一節。
 
 | 指標 | Graph RAG | Vector RAG | 差距 |
 |------|-----------|------------|------|
@@ -42,6 +45,35 @@ Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
 - **R（Retrieval）**：預期關鍵字出現在模型實際收到的 triples（`model_triples`）中
 - **A（Answer）**：預期關鍵字出現在模型 `answer` 欄位中
 - `[↑HOP]` 需要多跳推理（step 鏈、跨文件依賴、DEPENDS_ON 鏈）
+
+### 嚴謹評估：held-out test + LLM-judge + 負例（2026-06-02）
+
+上面的 10 題表用 keyword 子字串比對、且 dev=test，會高估能力。為此另建一套嚴謹 harness
+（`scripts/eval_rigorous.py`，27 題於 `data/sample_queries/fab_queries_v2.json`），補上四項方法論：
+
+- **held-out 切分**：test 的 15/18 條 gold 邊「從未被調參看過」，test 分數才是泛化指標。
+- **retrieval recall@k**：以每題的 `gold_triples`（`[from, rel, to]`）量測檢索是否撈到正確的邊。
+- **LLM-as-judge**：每個答案對「圖譜推導出的標準答案」評 correct/partial/wrong，比 keyword 嚴格。
+- **負例 + 變異**：拒答（查無實體/步驟）、離題、注入各自計分；每題跑 3 次報 mean±std。
+
+| 指標 | DEV（調過參） | **TEST（held-out）** |
+|------|--------------|---------------------|
+| Answer keyword-match | 100% | **97.7%** |
+| Retrieval recall@k（model triples） | 100% | **100%** |
+| Answer correctness（LLM-judge） | 93.8% | **90.9%** |
+
+負例（held-out）：拒答 **100%** · 離題攔截 **100%** · 注入攔截 **100%**。3 次重跑全 **±0.0**（temp=0 可重現）。
+LLM-judge 比 keyword 嚴格，抓出 keyword 漏掉的不完整答案（interlock、步驟序列各有一題僅 partial）。
+
+**誠實限制：**
+1. 語料僅 3 份 SOP / 48 邊，evidence-level recall 幾乎必然 100%（distinct 遍歷撈進近乎全圖），
+   **retrieval 尚未被真正壓力測試**——要更大的語料才看得出檢索差異。
+2. LLM-judge 用與生成相同的 vLLM，有 self-grading bias，故 90.9% 宜保留看待；
+   keyword 與 recall 為 model-independent 的交叉驗證。
+
+```bash
+docker compose exec -T api python scripts/eval_rigorous.py --runs 3
+```
 
 ### Citation Traceability
 
