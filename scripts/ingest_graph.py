@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 _GRAPH_SEED_DIR = Path(__file__).resolve().parent.parent / "data" / "graph_seed"
 
-_ALLOWED_NODE_LABELS = frozenset({"SOPDocument", "SOPStep", "Anomaly", "Equipment", "Node"})
+_ALLOWED_NODE_LABELS = frozenset({"SOPDocument", "SOPStep", "Anomaly", "Equipment", "ProcessCondition", "Node"})
 _ALLOWED_REL_TYPES = frozenset({
     "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
     "REQUIRES_STATUS", "PRECONDITION", "DEFINED_IN",

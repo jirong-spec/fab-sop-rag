@@ -298,10 +298,7 @@ data/
 ├── sop_docs/                        # 原始 SOP Markdown（向量庫用）
 │   ├── etch_pressure_anomaly.md     # SOP_Etch_001
 │   ├── vacuum_pump_check.md         # SOP_Pump_002
-│   ├── chamber_vent_procedure.md    # SOP_Vent_003
-│   ├── edwards_nxds_fault.md        # nXDS 幫浦故障處理
-│   ├── edwards_nxds_shutdown.md     # nXDS 幫浦關機程序
-│   └── edwards_nxds_startup.md     # nXDS 幫浦啟動程序
+│   └── chamber_vent_procedure.md    # SOP_Vent_003
 ├── graph_seed/
 │   ├── nodes.json                   # 29 個節點
 │   └── edges.json                   # 48 條邊
@@ -361,8 +358,8 @@ MATCH p = (a:Anomaly)-[:TRIGGERS_SOP]->(d:SOPDocument)
 RETURN p
 
 // 確認資料筆數
-MATCH (n) RETURN count(n)        // 57
-MATCH ()-[r]->() RETURN count(r) // 92
+MATCH (n) RETURN count(n)        // 29
+MATCH ()-[r]->() RETURN count(r) // 48
 ```
 
 ---

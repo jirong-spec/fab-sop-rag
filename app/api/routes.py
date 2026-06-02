@@ -259,7 +259,7 @@ async def ask_stream(
 # ── SOP knowledge graph ingest ────────────────────────────────────────────────
 
 _ALLOWED_NODE_LABELS = frozenset({
-    "SOPDocument", "SOPStep", "Anomaly", "Equipment", "Node",
+    "SOPDocument", "SOPStep", "Anomaly", "Equipment", "ProcessCondition", "Node",
 })
 _ALLOWED_REL_TYPES = frozenset({
     "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",

@@ -18,8 +18,6 @@ EXAMPLE_QUESTIONS = [
     "執行 SOP_Etch_001 前，TurboVacuumPump 需要是什麼狀態？",
     "EtchStation 的壓力 Interlock 在什麼條件下觸發？",
     "SOP_Etch_001 中 TurboVacuumPump 的狀態定義在哪份文件？",
-    "Edwards nXDS 泵浦啟動的步驟順序是什麼？",
-    "PumpOverheat 異常應執行哪個 SOP？",
 ]
 
 st.set_page_config(
@@ -42,7 +40,8 @@ with st.sidebar:
     st.divider()
     st.subheader("系統資訊")
     st.markdown("""
-- **圖譜**：Neo4j（57 節點 / 92 邊）
+- **圖譜**：Neo4j（29 節點 / 48 邊）
+- **向量庫**：Qdrant（sop_docs collection）
 - **LLM**：Qwen2.5-7B-AWQ-int4（vLLM）
 - **Embedding**：paraphrase-multilingual-MiniLM-L12-v2
 - **Guardrails**：4 階段（注入偵測 / 主題過濾 / 證據充分性 / 事實接地）
