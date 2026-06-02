@@ -82,6 +82,20 @@ threshold = max(top_score * 0.50, 20)
 scored = [t for t in scored_all if t[0] >= threshold][:100]
 ```
 
+### Graph Traversal：distinct-edge（取代 path + LIMIT 200）
+
+原本圖遍歷用 `MATCH p=(n)-[*1..2]-(m) RETURN p LIMIT 200`，但 `LIMIT 200` 限制的是**路徑數**——2-hop 在連通圖會路徑爆炸，命中上限後可能漏掉關鍵邊。改為收集 hop 內的 **distinct relationships**（`UNWIND r ... WITH DISTINCT rel`，LIMIT 500），小圖根本碰不到上限。
+
+三模式實測（10 題，graph-only）：
+
+| 模式 | R | A | 多跳 (q02/q05/q07) | 備註 |
+|------|---|---|------|------|
+| undirected（原狀） | 100% | 100% | 8/8 | 命中 LIMIT 200 截斷 |
+| directed（純 outgoing） | 92% | 88% | 6/8 | recall 退步，否決 |
+| **distinct** | **100%** | **100%** | **8/8** | 無截斷 ✅ |
+
+有向遍歷會退步，因實體抽取無法保證 seed 落在邊的來源端，純 outgoing 會漏掉入邊（如 `REQUIRES_STATUS`、`TRIGGERS_SOP`）。distinct 與 undirected 準確率打平、且消除截斷風險。可用 `GRAPH_TRAVERSAL_MODE` 切換（預設 `distinct`，見 `app/services/graph_store.py`）。
+
 ### Generation：Implicit Chain-of-Thought
 
 R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`reason`、`interlock_id`、`trigger`、`action`）。測試兩種 CoT 方法：
@@ -93,6 +107,12 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 | **方法 A：Implicit CoT（max_tokens 512）** | **100% (24/24)** | **4067 ms** |
 
 方法 A 勝出：scratchpad 佔用 ~300 tokens 壓縮答案空間，導致 q06 仍截斷。Implicit CoT 讓模型在內部推理，512 tokens 全用於輸出。
+
+### 向量庫：Chroma → Qdrant
+
+向量庫由 in-process 的 Chroma（`persist_directory`）改為獨立的 Qdrant server。讀寫統一走 LangChain `QdrantVectorStore`，payload schema 一致（`page_content` / `metadata`）；ingest 用 `force_recreate=True`，刪除來源 `.md` 後不會留下孤兒向量（plain upsert 會殘留）。
+
+embedding 模型不變（`paraphrase-multilingual-MiniLM-L12-v2`，384 維、Cosine），因此檢索品質不變：Graph RAG 維持 R/A 100%，Vector RAG baseline 54%→62%（Qdrant HNSW 排序與 vLLM 批次的細微差異）。
 
 ---
 
@@ -108,12 +128,6 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
  │
  ▼
 [Guard 2] 主題過濾（LLM-as-judge）
-### 向量庫：Chroma → Qdrant
-
-向量庫由 in-process 的 Chroma（`persist_directory`）改為獨立的 Qdrant server。讀寫統一走 LangChain `QdrantVectorStore`，payload schema 一致（`page_content` / `metadata`）；ingest 用 `force_recreate=True`，刪除來源 `.md` 後不會留下孤兒向量（plain upsert 會殘留）。
-
-embedding 模型不變（`paraphrase-multilingual-MiniLM-L12-v2`，384 維、Cosine），因此檢索品質不變：Graph RAG 維持 R/A 100%，Vector RAG baseline 54%→62%（Qdrant HNSW 排序與 vLLM 批次的細微差異）。
-
  │
  ▼
 實體抽取

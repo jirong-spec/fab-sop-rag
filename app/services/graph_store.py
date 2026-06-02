@@ -41,6 +41,21 @@ def _node_label(node) -> str:
     return f"{node_id}[{title}]" if title else node_id
 
 
+def _rel_to_triple(rel, start_node, end_node) -> str | None:
+    """Serialize a relationship to a triple string, always reflecting the
+    stored edge direction (start_node → end_node) regardless of how it was
+    matched. Returns None if either endpoint has no id."""
+    start_name = _node_label(start_node)
+    end_name = _node_label(end_node)
+    if not start_name or not end_name:
+        return None
+    rel_props = dict(rel)
+    if rel_props:
+        prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
+        return f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
+    return f"({start_name})-[:{rel.type}]->({end_name})"
+
+
 def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     """
     Expand from seed entities via graph traversal up to `hop` hops.
@@ -62,11 +77,35 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     # hop is validated as int (1-4) by AskRequest; explicit cast prevents any
     # future code path from accidentally passing a string here.
     hop = int(hop)
-    query = f"""
-    MATCH p=(n)-[*1..{hop}]-(m)
-    WHERE n.id IN $ents
-    RETURN p LIMIT 200
-    """
+    mode = settings.graph_traversal_mode
+
+    if mode == "distinct":
+        # Collect distinct relationships within `hop` hops of any seed.
+        # Avoids the path-count explosion of variable-length paths, so the
+        # LIMIT is effectively never hit on a small graph.
+        query = f"""
+        MATCH (n)-[r*1..{hop}]-(m)
+        WHERE n.id IN $ents
+        UNWIND r AS rel
+        WITH DISTINCT rel
+        RETURN startNode(rel) AS s, rel AS r, endNode(rel) AS e
+        LIMIT 500
+        """
+        limit = 500
+    elif mode == "directed":
+        query = f"""
+        MATCH p=(n)-[*1..{hop}]->(m)
+        WHERE n.id IN $ents
+        RETURN p LIMIT 200
+        """
+        limit = 200
+    else:  # "undirected" (default)
+        query = f"""
+        MATCH p=(n)-[*1..{hop}]-(m)
+        WHERE n.id IN $ents
+        RETURN p LIMIT 200
+        """
+        limit = 200
 
     seen: set[str] = set()
     result: list[str] = []
@@ -77,28 +116,23 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
             return list(session.run(query, ents=entities))
 
     records = _query()
-    if len(records) == 200:
+    if len(records) == limit:
         logger.warning(
-            "graph_expand hit LIMIT 200 for entities=%s hop=%d — results may be truncated",
-            entities, hop,
+            "graph_expand(%s) hit LIMIT %d for entities=%s hop=%d — results may be truncated",
+            mode, limit, entities, hop,
         )
-    for record in records:
-        path = record["p"]
-        for rel in path.relationships:
-            start_name = _node_label(rel.start_node)
-            end_name = _node_label(rel.end_node)
-            if not start_name or not end_name:
-                continue
-            # Include edge properties (e.g. required_status, reason) so the
-            # LLM knows not just *what* is required but *which value* is needed.
-            rel_props = {k: v for k, v in dict(rel).items()}
-            if rel_props:
-                prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
-                triple = f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
-            else:
-                triple = f"({start_name})-[:{rel.type}]->({end_name})"
-            if triple not in seen:
-                seen.add(triple)
-                result.append(triple)
+
+    def _add(triple: str | None) -> None:
+        if triple and triple not in seen:
+            seen.add(triple)
+            result.append(triple)
+
+    if mode == "distinct":
+        for record in records:
+            _add(_rel_to_triple(record["r"], record["s"], record["e"]))
+    else:
+        for record in records:
+            for rel in record["p"].relationships:
+                _add(_rel_to_triple(rel, rel.start_node, rel.end_node))
 
     return result
