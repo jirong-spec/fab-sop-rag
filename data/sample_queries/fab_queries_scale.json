@@ -1,0 +1,362 @@
+[
+  {
+    "id": "s01",
+    "split": "test",
+    "type": "answerable",
+    "category": "anomaly_handling",
+    "question": "當發生薄膜厚度漂移（FilmThicknessDrift）時，應依照哪一份 SOP 處理？",
+    "expected_keywords": [
+      "SOP_CVD_010"
+    ],
+    "gold_triples": [
+      [
+        "FilmThicknessDrift",
+        "TRIGGERS_SOP",
+        "SOP_CVD_010"
+      ]
+    ],
+    "gold": "應執行 SOP_CVD_010。"
+  },
+  {
+    "id": "s02",
+    "split": "test",
+    "type": "answerable",
+    "category": "sop_step_sequence",
+    "question": "SOP_CVD_010 的完整步驟由第一步到最後一步依序是哪些？",
+    "expected_keywords": [
+      "CheckCVDVacuum",
+      "CalibrateGasFlow",
+      "MeasureFilmThickness",
+      "AdjustDepositionRate",
+      "VerifyFilmUniformity"
+    ],
+    "gold_triples": [
+      [
+        "SOP_CVD_010",
+        "FIRST_STEP",
+        "CheckCVDVacuum"
+      ],
+      [
+        "CheckCVDVacuum",
+        "NEXT_STEP",
+        "CalibrateGasFlow"
+      ],
+      [
+        "CalibrateGasFlow",
+        "NEXT_STEP",
+        "MeasureFilmThickness"
+      ],
+      [
+        "MeasureFilmThickness",
+        "NEXT_STEP",
+        "AdjustDepositionRate"
+      ],
+      [
+        "AdjustDepositionRate",
+        "NEXT_STEP",
+        "VerifyFilmUniformity"
+      ]
+    ],
+    "gold": "CheckCVDVacuum → CalibrateGasFlow → MeasureFilmThickness → AdjustDepositionRate → VerifyFilmUniformity"
+  },
+  {
+    "id": "s03",
+    "split": "test",
+    "type": "answerable",
+    "category": "hub_disambiguation",
+    "question": "執行 SOP_CVD_010 之前，RFPowerSupply 需要處於什麼狀態？",
+    "expected_keywords": [
+      "RFPowerSupply",
+      "STANDBY_OR_OFF"
+    ],
+    "gold_triples": [
+      [
+        "SOP_CVD_010",
+        "PRECONDITION",
+        "RFPowerSupply"
+      ]
+    ],
+    "gold": "RFPowerSupply = STANDBY_OR_OFF（注意：不同 SOP 對 RFPowerSupply 的前置狀態不同，SOP_Implant_030 要求 OFF）。"
+  },
+  {
+    "id": "s04",
+    "split": "test",
+    "type": "answerable",
+    "category": "hub_disambiguation",
+    "question": "在 SOP_CVD_010 中，CheckCVDVacuum 步驟要求 TurboVacuumPump 處於什麼狀態？",
+    "expected_keywords": [
+      "TurboVacuumPump",
+      "RUNNING"
+    ],
+    "gold_triples": [
+      [
+        "CheckCVDVacuum",
+        "REQUIRES_STATUS",
+        "TurboVacuumPump"
+      ]
+    ],
+    "gold": "RUNNING"
+  },
+  {
+    "id": "s05",
+    "split": "test",
+    "type": "answerable",
+    "category": "hub_disambiguation",
+    "question": "執行 SOP_Implant_030 之前，RFPowerSupply 必須是什麼狀態？",
+    "expected_keywords": [
+      "RFPowerSupply",
+      "OFF"
+    ],
+    "gold_triples": [
+      [
+        "SOP_Implant_030",
+        "PRECONDITION",
+        "RFPowerSupply"
+      ]
+    ],
+    "gold": "RFPowerSupply = OFF（與 SOP_CVD_010/SOP_Etch_001 的 STANDBY_OR_OFF 不同）。"
+  },
+  {
+    "id": "s06",
+    "split": "test",
+    "type": "answerable",
+    "category": "cross_doc_dependency",
+    "question": "SOP_CVD_010 對哪一份其他 SOP 文件有跨文件依賴？",
+    "expected_keywords": [
+      "SOP_Pump_002"
+    ],
+    "gold_triples": [
+      [
+        "SOP_CVD_010",
+        "CROSS_DOC_DEPENDENCY",
+        "SOP_Pump_002"
+      ]
+    ],
+    "gold": "SOP_Pump_002（TurboVacuumPump 狀態定義來源）"
+  },
+  {
+    "id": "s07",
+    "split": "test",
+    "type": "answerable",
+    "category": "interlock_condition",
+    "question": "CVDChamber 的設備聯鎖在什麼條件下觸發？觸發後執行什麼動作？",
+    "expected_keywords": [
+      "IL-C010",
+      "GasDeliverySystem"
+    ],
+    "gold_triples": [
+      [
+        "CVDChamber",
+        "INTERLOCK_WITH",
+        "GasDeliverySystem"
+      ]
+    ],
+    "gold": "IL-C010：chamber_pressure > 5 Torr 時觸發，動作為 close gas inlet。"
+  },
+  {
+    "id": "s08",
+    "split": "test",
+    "type": "answerable",
+    "category": "sop_step_sequence",
+    "question": "SOP_Anneal_050 快速熱退火的步驟順序為何？",
+    "expected_keywords": [
+      "CheckPurgeFlow",
+      "RampTemperature",
+      "HoldSoakTime",
+      "CoolDownChamber",
+      "LogThermalProfile"
+    ],
+    "gold_triples": [
+      [
+        "SOP_Anneal_050",
+        "FIRST_STEP",
+        "CheckPurgeFlow"
+      ],
+      [
+        "CheckPurgeFlow",
+        "NEXT_STEP",
+        "RampTemperature"
+      ],
+      [
+        "RampTemperature",
+        "NEXT_STEP",
+        "HoldSoakTime"
+      ],
+      [
+        "HoldSoakTime",
+        "NEXT_STEP",
+        "CoolDownChamber"
+      ],
+      [
+        "CoolDownChamber",
+        "NEXT_STEP",
+        "LogThermalProfile"
+      ]
+    ],
+    "gold": "CheckPurgeFlow → RampTemperature → HoldSoakTime → CoolDownChamber → LogThermalProfile"
+  },
+  {
+    "id": "s09",
+    "split": "test",
+    "type": "answerable",
+    "category": "hub_disambiguation",
+    "question": "在 SOP_Anneal_050 中，CheckPurgeFlow 步驟要求 N2PurgeSystem 處於什麼狀態？",
+    "expected_keywords": [
+      "N2PurgeSystem",
+      "READY"
+    ],
+    "gold_triples": [
+      [
+        "CheckPurgeFlow",
+        "REQUIRES_STATUS",
+        "N2PurgeSystem"
+      ]
+    ],
+    "gold": "READY"
+  },
+  {
+    "id": "s10",
+    "split": "test",
+    "type": "answerable",
+    "category": "cross_doc_dependency",
+    "question": "SOP_Anneal_050 在退火後的洩壓須依哪一份 SOP 執行？",
+    "expected_keywords": [
+      "SOP_Vent_003"
+    ],
+    "gold_triples": [
+      [
+        "SOP_Anneal_050",
+        "CROSS_DOC_DEPENDENCY",
+        "SOP_Vent_003"
+      ]
+    ],
+    "gold": "SOP_Vent_003"
+  },
+  {
+    "id": "s11",
+    "split": "test",
+    "type": "answerable",
+    "category": "sop_step_sequence",
+    "question": "SOP_CMP_020 平坦化研磨的步驟依序為何？",
+    "expected_keywords": [
+      "ReadPolishRecipe",
+      "CheckSlurryFlow",
+      "MonitorEndpoint",
+      "MeasurePostPolish",
+      "CleanPolishedWafer"
+    ],
+    "gold_triples": [
+      [
+        "SOP_CMP_020",
+        "FIRST_STEP",
+        "ReadPolishRecipe"
+      ],
+      [
+        "ReadPolishRecipe",
+        "NEXT_STEP",
+        "CheckSlurryFlow"
+      ],
+      [
+        "CheckSlurryFlow",
+        "NEXT_STEP",
+        "MonitorEndpoint"
+      ],
+      [
+        "MonitorEndpoint",
+        "NEXT_STEP",
+        "MeasurePostPolish"
+      ],
+      [
+        "MeasurePostPolish",
+        "NEXT_STEP",
+        "CleanPolishedWafer"
+      ]
+    ],
+    "gold": "ReadPolishRecipe → CheckSlurryFlow → MonitorEndpoint → MeasurePostPolish → CleanPolishedWafer"
+  },
+  {
+    "id": "s12",
+    "split": "test",
+    "type": "answerable",
+    "category": "multihop_dependency",
+    "question": "SOP_Litho_040 的 ReexposeTestWafer 步驟，往前追溯整條前置依賴鏈包含哪些步驟？",
+    "expected_keywords": [
+      "AdjustStagePosition",
+      "MeasureOverlay",
+      "CheckAlignmentMarks"
+    ],
+    "gold_triples": [
+      [
+        "ReexposeTestWafer",
+        "DEPENDS_ON",
+        "AdjustStagePosition"
+      ],
+      [
+        "AdjustStagePosition",
+        "DEPENDS_ON",
+        "MeasureOverlay"
+      ],
+      [
+        "MeasureOverlay",
+        "DEPENDS_ON",
+        "CheckAlignmentMarks"
+      ]
+    ],
+    "gold": "ReexposeTestWafer ← AdjustStagePosition ← MeasureOverlay ← CheckAlignmentMarks"
+  },
+  {
+    "id": "s13",
+    "split": "test",
+    "type": "answerable",
+    "category": "anomaly_handling",
+    "question": "發生疊對誤差（OverlayError）時應執行哪一份 SOP？",
+    "expected_keywords": [
+      "SOP_Litho_040"
+    ],
+    "gold_triples": [
+      [
+        "OverlayError",
+        "TRIGGERS_SOP",
+        "SOP_Litho_040"
+      ]
+    ],
+    "gold": "應執行 SOP_Litho_040。"
+  },
+  {
+    "id": "s14",
+    "split": "test",
+    "type": "answerable",
+    "category": "cross_doc_dependency",
+    "question": "SOP_Metro_070 量測超規後，要回饋給哪一份 SOP 進行調整？",
+    "expected_keywords": [
+      "SOP_Litho_040"
+    ],
+    "gold_triples": [
+      [
+        "SOP_Metro_070",
+        "CROSS_DOC_DEPENDENCY",
+        "SOP_Litho_040"
+      ]
+    ],
+    "gold": "SOP_Litho_040"
+  },
+  {
+    "id": "s15",
+    "split": "test",
+    "type": "answerable",
+    "category": "hub_disambiguation",
+    "question": "在 SOP_Clean_060 中，DIWaterRinse 步驟要求 DIWaterSystem 處於什麼狀態？",
+    "expected_keywords": [
+      "DIWaterSystem",
+      "RUNNING"
+    ],
+    "gold_triples": [
+      [
+        "DIWaterRinse",
+        "REQUIRES_STATUS",
+        "DIWaterSystem"
+      ]
+    ],
+    "gold": "RUNNING"
+  }
+]

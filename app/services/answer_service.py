@@ -19,9 +19,22 @@ import re
 
 from collections.abc import Iterator
 
+from app.config import settings
 from app.services.llm_client import chat_completion, chat_completion_stream
 
 logger = logging.getLogger(__name__)
+
+# Generation completion budget; also reserved when trimming the prompt to fit
+# the model context window (see _fit_context_to_budget).
+GEN_MAX_TOKENS = 512
+
+
+def _estimate_tokens(text: str) -> int:
+    """Cheap, dependency-free, conservative token estimate for mixed CJK/ASCII.
+    CJK chars ≈ 1 token each; other chars ≈ 3 chars/token. Overestimates slightly
+    (safe — we'd rather trim one extra triple than overflow the context window)."""
+    cjk = sum(1 for c in text if "一" <= c <= "鿿")
+    return cjk + (len(text) - cjk + 2) // 3
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -147,9 +160,35 @@ def _prepare_generation(
                     model_triples.append(t)
                     scored.append((score_lookup.get(t, 0), t))
 
+    # ── Token-budget trim ────────────────────────────────────────────────────
+    # Cap by triple COUNT (above) is not enough: on a dense graph 100 triples can
+    # blow the model context window (HTTP 400). Keep the highest-ranked triples
+    # that fit within (context_window − completion − chat-template margin).
+    scored = _fit_context_to_budget(question, scored)
+    model_triples = [triple for _, triple in scored]
+
     context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
     prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
     return prompt, model_triples
+
+
+def _fit_context_to_budget(question: str, scored: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """Greedily keep top-ranked triples whose serialized lines fit the context budget."""
+    overhead = _estimate_tokens(_PROMPT_TEMPLATE.format(context="", question=question))
+    budget = settings.llm_max_model_len - GEN_MAX_TOKENS - 256  # 256 ≈ chat template + safety
+    used = overhead
+    kept: list[tuple[int, str]] = []
+    for pct, triple in scored:
+        cost = _estimate_tokens(f"[{pct}%] {triple}") + 1
+        if used + cost > budget and kept:
+            logger.warning(
+                "Context budget reached: kept %d/%d triples (~%d tokens, budget %d)",
+                len(kept), len(scored), used, budget,
+            )
+            break
+        used += cost
+        kept.append((pct, triple))
+    return kept
 
 
 def generate_answer(
@@ -163,7 +202,7 @@ def generate_answer(
         return _NO_INFO_ANSWER, []
     try:
         prompt, model_triples = _prepare_generation(question, triples, entities)
-        return chat_completion(prompt, temperature=0.0, max_tokens=512), model_triples
+        return chat_completion(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
         return _LLM_ERROR_ANSWER, []
@@ -190,7 +229,7 @@ def generate_answer_stream(
 
     try:
         prompt, model_triples = _prepare_generation(question, triples, entities)
-        return chat_completion_stream(prompt, temperature=0.0, max_tokens=512), model_triples
+        return chat_completion_stream(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
     except Exception as exc:
         logger.error("Answer stream preparation failed: %s", exc)
         def _error():

@@ -214,8 +214,8 @@ def render(per_run_aggs: dict, runs: int, by_cat: dict, use_judge: bool) -> str:
         jd_s = f"{jd*100:4.0f}%" if jd is not None else "  - "
         L.append(f"    {cat:<26} kw {kw*100:4.0f}%   recall {rc*100:4.0f}%   judge {jd_s}   (n={len(vals)//runs})")
     L.append("")
-    L.append("  Caveats: corpus = 3 SOPs / 48 edges (evidence-recall near-trivial at this scale);")
-    L.append("           LLM-judge uses the same vLLM model as generation (self-grading bias).")
+    L.append("  Caveats: on a small/sparse graph, evidence-recall is near-trivial (traversal returns")
+    L.append("           most of it); LLM-judge shares the generation vLLM (self-grading bias).")
     L.append("=" * 74)
     return "\n".join(L)
 
@@ -228,10 +228,12 @@ def main() -> None:
     ap.add_argument("--no-judge", action="store_true")
     ap.add_argument("--output", type=str, default="")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--queries", type=str, default=str(QUERIES_PATH),
+                    help="query set (default fab_queries_v2.json; use fab_queries_scale.json for the 10-SOP stress fixture)")
     args = ap.parse_args()
     use_judge = not args.no_judge
 
-    queries = json.loads(QUERIES_PATH.read_text(encoding="utf-8"))
+    queries = json.loads(Path(args.queries).read_text(encoding="utf-8"))
     print(f"[INFO] {len(queries)} queries x {args.runs} runs, judge={'on' if use_judge else 'off'}")
 
     # pre-warm

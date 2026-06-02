@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     openai_api_base: str = "http://vllm:8000/v1"
     llm_model: str = "Qwen2.5-7B-Instruct-AWQ-int4"
     llm_timeout: float = 30.0
+    # Model context window (must match vLLM --max-model-len). The prompt builder
+    # trims retrieved triples to fit this budget so a dense graph can't overflow it.
+    llm_max_model_len: int = 4096
 
     # Neo4j
     # Default uses Docker service name; override to bolt://localhost:7687 for local dev

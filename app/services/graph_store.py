@@ -41,6 +41,30 @@ def _node_label(node) -> str:
     return f"{node_id}[{title}]" if title else node_id
 
 
+def _edge_gloss(rel_type: str, s: str, e: str, props: dict) -> str | None:
+    """Synthesize a Traditional-Chinese description for edge types that ship
+    without one. CamelCase-only edges (REQUIRES_STATUS, PRECONDITION, …) embed
+    poorly against Chinese questions, so the bi-encoder rerank pushes them down
+    and the cap drops them. A Chinese gloss gives them semantic content to match,
+    mirroring the NEXT_STEP/DEPENDS_ON `description` enrichment already in the seed."""
+    st = props.get("required_status", "")
+    if rel_type == "REQUIRES_STATUS":
+        return f"{s} 步驟執行時要求設備 {e} 的狀態為 {st}"
+    if rel_type == "PRECONDITION":
+        return f"執行 {s} 前，設備 {e} 的前置狀態必須為 {st}"
+    if rel_type == "INTERLOCK_WITH":
+        return f"設備 {s} 與 {e} 聯鎖：當 {props.get('trigger', '')} 時，動作為 {props.get('action', '')}"
+    if rel_type == "TRIGGERS_SOP":
+        return f"異常 {s} 觸發應執行的 SOP 文件 {e}"
+    if rel_type == "FIRST_STEP":
+        return f"SOP 文件 {s} 的第一個步驟是 {e}"
+    if rel_type == "DEFINED_IN":
+        return f"步驟 {s} 定義於 SOP 文件 {e}"
+    if rel_type == "CROSS_DOC_DEPENDENCY":
+        return f"SOP 文件 {s} 跨文件依賴 {e}：{props.get('reason', '')}"
+    return None
+
+
 def _rel_to_triple(rel, start_node, end_node) -> str | None:
     """Serialize a relationship to a triple string, always reflecting the
     stored edge direction (start_node → end_node) regardless of how it was
@@ -50,6 +74,10 @@ def _rel_to_triple(rel, start_node, end_node) -> str | None:
     if not start_name or not end_name:
         return None
     rel_props = dict(rel)
+    if "description" not in rel_props:
+        gloss = _edge_gloss(rel.type, start_node.get("id", ""), end_node.get("id", ""), rel_props)
+        if gloss:
+            rel_props["description"] = gloss
     if rel_props:
         prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
         return f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
