@@ -17,7 +17,7 @@ from pathlib import Path
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _STEPS = [
     ("Graph seed  (Neo4j)", _SCRIPTS_DIR / "ingest_graph.py"),
-    ("Vector seed (Chroma)", _SCRIPTS_DIR / "ingest_vector.py"),
+    ("Vector seed (Qdrant)", _SCRIPTS_DIR / "ingest_vector.py"),
 ]
 
 

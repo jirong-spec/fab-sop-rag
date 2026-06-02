@@ -60,7 +60,7 @@ data/
 2. **`scripts/ingest_vector.py`** reads every `*.md` file in `sop_docs/`,
    splits each file into ~400-character overlapping chunks,
    embeds them with HuggingFace sentence-transformers,
-   and upserts them into the `sop_docs` Chroma collection.
+   and upserts them into the `sop_docs` Qdrant collection.
 
 3. **`scripts/ingest_all.py`** runs both scripts in sequence.
 

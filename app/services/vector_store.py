@@ -1,8 +1,8 @@
 import logging
 import threading
 
-from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_qdrant import QdrantVectorStore
 
 from app.config import settings
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _embeddings: HuggingFaceEmbeddings | None = None
 _reranker_embeddings: HuggingFaceEmbeddings | None = None
-_vector_store: Chroma | None = None
+_vector_store: QdrantVectorStore | None = None
 # Three separate locks to prevent deadlock: _get_vector_store calls _get_embeddings
 # while holding its own lock, so a single shared Lock would deadlock.
 _embeddings_lock = threading.Lock()
@@ -32,7 +32,7 @@ def _cuda_kwargs() -> dict:
 
 
 def _get_embeddings() -> HuggingFaceEmbeddings:
-    """Lazy-init the Chroma embedding model; singleton with double-checked locking."""
+    """Lazy-init the document embedding model; singleton with double-checked locking."""
     global _embeddings
     if _embeddings is None:
         with _embeddings_lock:
@@ -47,7 +47,7 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
     """Lazy-init the reranker embedding model; singleton with double-checked locking.
 
-    Falls back to the Chroma embedding model when RERANKER_MODEL is not set.
+    Falls back to the document embedding model when RERANKER_MODEL is not set.
     """
     global _reranker_embeddings
     if _reranker_embeddings is None:
@@ -61,17 +61,25 @@ def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
     return _reranker_embeddings
 
 
-def _get_vector_store() -> Chroma:
-    """Lazy-init the vector store; singleton with double-checked locking."""
+def _get_vector_store() -> QdrantVectorStore:
+    """Lazy-init the Qdrant vector store; singleton with double-checked locking.
+
+    Connects to an existing collection (created by scripts/ingest_vector.py).
+    Raises if the collection does not exist yet — callers (warmup, health probe)
+    wrap this in try/except so a not-yet-ingested store degrades gracefully.
+    """
     global _vector_store
     if _vector_store is None:
         with _vector_store_lock:
             if _vector_store is None:
-                logger.info("Opening Chroma store at: %s", settings.chroma_dir)
-                _vector_store = Chroma(
-                    persist_directory=settings.chroma_dir,
-                    embedding_function=_get_embeddings(),
-                    collection_name="sop_docs",
+                logger.info(
+                    "Connecting to Qdrant at %s (collection=%s)",
+                    settings.qdrant_url, settings.qdrant_collection,
+                )
+                _vector_store = QdrantVectorStore.from_existing_collection(
+                    embedding=_get_embeddings(),
+                    collection_name=settings.qdrant_collection,
+                    url=settings.qdrant_url,
                 )
     return _vector_store
 

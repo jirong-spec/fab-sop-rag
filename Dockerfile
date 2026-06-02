@@ -29,8 +29,7 @@ ENV HF_HOME=/app/.cache/huggingface
 
 # Run as non-root to limit blast radius if the process is compromised
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
-    && chown -R appuser:appgroup /app \
-    && mkdir -p /data/chroma && chown -R appuser:appgroup /data
+    && chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 8000

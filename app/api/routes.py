@@ -38,7 +38,7 @@ root_router = APIRouter(tags=["Operations"])
     summary="Liveness check",
     description=(
         "Returns `200 ok` when the process is running. "
-        "Does **not** verify downstream connectivity (Neo4j, vLLM, Chroma). "
+        "Does **not** verify downstream connectivity (Neo4j, vLLM, Qdrant). "
         "Used by Docker / load-balancer health checks."
     ),
 )
@@ -83,17 +83,23 @@ async def _probe_vllm() -> ServiceStatus:
         return ServiceStatus(status="down", detail=str(exc)[:120])
 
 
-def _probe_chroma() -> ServiceStatus:
+def _probe_qdrant() -> ServiceStatus:
     try:
-        from app.services.vector_store import _get_vector_store
+        from qdrant_client import QdrantClient
         t0 = time.perf_counter()
-        db = _get_vector_store()
-        count = len(db.get(include=[])["ids"])
+        client = QdrantClient(url=settings.qdrant_url)
+        if not client.collection_exists(settings.qdrant_collection):
+            return ServiceStatus(
+                status="degraded",
+                latency_ms=int((time.perf_counter() - t0) * 1000),
+                detail=f"collection {settings.qdrant_collection!r} missing — run vector ingest first",
+            )
+        count = client.count(settings.qdrant_collection).count
         latency_ms = int((time.perf_counter() - t0) * 1000)
         if count == 0:
             return ServiceStatus(
                 status="degraded", latency_ms=latency_ms,
-                detail="sop_docs collection is empty — run vector ingest first",
+                detail=f"{settings.qdrant_collection} collection is empty — run vector ingest first",
             )
         return ServiceStatus(status="ok", latency_ms=latency_ms)
     except Exception as exc:
@@ -104,7 +110,7 @@ def _probe_chroma() -> ServiceStatus:
     "/health",
     summary="Deep health check",
     description=(
-        "Probes Neo4j, vLLM, and Chroma in parallel. "
+        "Probes Neo4j, vLLM, and Qdrant in parallel. "
         "Returns `degraded` (HTTP 200) if any non-critical service is slow; "
         "`down` (HTTP 503) if a critical service is unreachable."
     ),
@@ -114,16 +120,16 @@ def _probe_chroma() -> ServiceStatus:
 async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
     req_id = get_request_id()
 
-    neo4j_result, vllm_result, chroma_result = await asyncio.gather(
+    neo4j_result, vllm_result, qdrant_result = await asyncio.gather(
         asyncio.to_thread(_probe_neo4j),
         _probe_vllm(),
-        asyncio.to_thread(_probe_chroma),
+        asyncio.to_thread(_probe_qdrant),
     )
 
     services = {
         "neo4j": neo4j_result,
         "vllm": vllm_result,
-        "chroma": chroma_result,
+        "qdrant": qdrant_result,
     }
 
     statuses = {s.status for s in services.values()}
@@ -138,11 +144,11 @@ async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
         http_status = 200
 
     logger.info(
-        "Deep health | overall=%s neo4j=%s vllm=%s chroma=%s",
+        "Deep health | overall=%s neo4j=%s vllm=%s qdrant=%s",
         overall,
         neo4j_result.status,
         vllm_result.status,
-        chroma_result.status,
+        qdrant_result.status,
     )
 
     body = HealthResponse(

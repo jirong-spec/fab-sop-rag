@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     neo4j_username: str = "neo4j"
     neo4j_password: str = "password123"
 
-    # Vector store (Chroma)
-    # Default is the Docker volume mount path.
-    # For local dev without Docker: CHROMA_DIR=../lab1/chroma_store
-    chroma_dir: str = "/data/chroma"
+    # Vector store (Qdrant)
+    # Default uses the Docker service name; override to http://localhost:6333 for local dev.
+    qdrant_url: str = "http://qdrant:6333"
+    qdrant_collection: str = "sop_docs"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     reranker_model: str = ""  # if empty, falls back to embedding_model
 

@@ -1,7 +1,7 @@
 """
 Traditional (vector-only) RAG pipeline — latency baseline.
 
-Flow: question → Chroma similarity search → LLM generation
+Flow: question → Qdrant similarity search → LLM generation
 Same 4 guardrails as the Graph RAG pipeline so the comparison is apples-to-apples.
 """
 
@@ -68,7 +68,7 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
         if not topic.passed:
             return _blocked(req, guardrail_results, "blocked_off_topic", topic.reason, t0), stage_latencies
 
-    # ── Retrieval (Chroma only) ───────────────────────────────────────────────
+    # ── Retrieval (Qdrant only) ───────────────────────────────────────────────
     _ts = time.perf_counter()
     chunks = similarity_search(question, k=6)
     stage_latencies["retrieval"] = int((time.perf_counter() - _ts) * 1000)

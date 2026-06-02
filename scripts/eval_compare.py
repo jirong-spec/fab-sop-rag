@@ -10,7 +10,7 @@ Runs all queries through both pipelines and reports:
 
 Usage
 -----
-  # Live mode (requires Neo4j + vLLM + Chroma running):
+  # Live mode (requires Neo4j + vLLM + Qdrant running):
   docker compose exec -T api python scripts/eval_compare.py
 
   # Graph RAG only (original behaviour):

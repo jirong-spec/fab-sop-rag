@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
         _get_embeddings().embed_query("warmup")
         _get_reranker_embeddings().embed_query("warmup")
         _get_vector_store()
-        logger.info("Warm-up: embedding models + Chroma loaded")
+        logger.info("Warm-up: embedding models + Qdrant connection loaded")
     except Exception as e:
         logger.warning("Warm-up vector store failed (non-fatal): %s", e)
     try:

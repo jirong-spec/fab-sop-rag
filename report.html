@@ -331,7 +331,7 @@
       <span class="badge">Qwen2.5-7B-AWQ-int4 · vLLM</span>
       <span class="badge">paraphrase-multilingual-MiniLM-L12-v2</span>
       <span class="badge">NVIDIA RTX 3060 · CUDA 12.4</span>
-      <span class="badge">FastAPI + Chroma + Docker Compose</span>
+      <span class="badge">FastAPI + Qdrant + Docker Compose</span>
     </div>
   </div>
 </header>
@@ -432,7 +432,7 @@
 
             <div class="pipe-step" style="min-width:100px;">
               <div>Retrieval</div>
-              <div class="pipe-lbl">Chroma + Neo4j</div>
+              <div class="pipe-lbl">Qdrant + Neo4j</div>
               <div class="pipe-tag no-llm">無 vLLM</div>
             </div>
             <div class="pipe-arrow">→</div>
@@ -477,7 +477,7 @@
             <div class="pipe-arrow">→</div>
             <div class="pipe-step">
               <div>Entity 抽取</div>
-              <div class="pipe-lbl">Chroma 向量搜尋</div>
+              <div class="pipe-lbl">Qdrant 向量搜尋</div>
             </div>
             <div class="pipe-arrow">→</div>
             <div class="pipe-step">
@@ -770,7 +770,7 @@
           <h4>Graph RAG — stage breakdown（典型問題）</h4>
           <div class="stage-row"><span>guard_injection</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>guard_topic</span><span class="stage-ms">~0 ms</span></div>
-          <div class="stage-row"><span>retrieval（Chroma + Neo4j + reranker）</span><span class="stage-ms">~200 ms</span></div>
+          <div class="stage-row"><span>retrieval（Qdrant + Neo4j + reranker）</span><span class="stage-ms">~200 ms</span></div>
           <div class="stage-row"><span>guard_evidence</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~2600 ms</span></div>
           <div class="stage-row"><span>guard_grounding（LLM）</span><span class="stage-ms">~1150 ms</span></div>
@@ -781,7 +781,7 @@
           <h4>Vector RAG — stage breakdown（典型問題）</h4>
           <div class="stage-row"><span>guard_injection</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>guard_topic</span><span class="stage-ms">~0 ms</span></div>
-          <div class="stage-row"><span>retrieval（Chroma only）</span><span class="stage-ms">~15 ms</span></div>
+          <div class="stage-row"><span>retrieval（Qdrant only）</span><span class="stage-ms">~15 ms</span></div>
           <div class="stage-row"><span>guard_evidence</span><span class="stage-ms">~0 ms</span></div>
           <div class="stage-row"><span>generation（vLLM）</span><span class="stage-ms">~2530 ms</span></div>
           <div class="stage-row"><span>guard_grounding（LLM）</span><span class="stage-ms">~1150 ms</span></div>
@@ -797,7 +797,7 @@
         <li><strong>Neo4j 圖遍歷</strong>（2-hop Cypher 查詢）：+~100 ms</li>
         <li><strong>Reranker 批次 embedding</strong>（40–62 條 triple，GPU）：+~85 ms</li>
         <li><strong>Generation prompt 長度</strong>（graph triple prompt token 略多）：+~70 ms</li>
-        <li><strong>guard_grounding context</strong>（model_triples ~15–19 條 vs Chroma 6 個片段）：接近相同</li>
+        <li><strong>guard_grounding context</strong>（model_triples ~15–19 條 vs Qdrant 6 個片段）：接近相同</li>
       </ul>
     </section>
 

@@ -2,7 +2,7 @@
 
 **Guardrailed Hybrid Graph RAG — Single-machine Enterprise MVP**
 
-用自然語言詢問晶圓廠 SOP 文件，系統自動從知識圖譜（Neo4j）和向量庫（Chroma）撈出 SOP 步驟、設備依賴、前置條件，再由 LLM 合成答案，並經過四道 guardrail 過濾。
+用自然語言詢問晶圓廠 SOP 文件，系統自動從知識圖譜（Neo4j）和向量庫（Qdrant）撈出 SOP 步驟、設備依賴、前置條件，再由 LLM 合成答案，並經過四道 guardrail 過濾。
 
 ![image](https://github.com/jirong-spec/fab-sop-rag/blob/main/visualisation.png)
 
@@ -108,11 +108,17 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
  │
  ▼
 [Guard 2] 主題過濾（LLM-as-judge）
+### 向量庫：Chroma → Qdrant
+
+向量庫由 in-process 的 Chroma（`persist_directory`）改為獨立的 Qdrant server。讀寫統一走 LangChain `QdrantVectorStore`，payload schema 一致（`page_content` / `metadata`）；ingest 用 `force_recreate=True`，刪除來源 `.md` 後不會留下孤兒向量（plain upsert 會殘留）。
+
+embedding 模型不變（`paraphrase-multilingual-MiniLM-L12-v2`，384 維、Cosine），因此檢索品質不變：Graph RAG 維持 R/A 100%，Vector RAG baseline 54%→62%（Qdrant HNSW 排序與 vLLM 批次的細微差異）。
+
  │
  ▼
 實體抽取
  ├─ 問題本身的 CamelCase / SOP_ID token
- └─ Chroma 相似度搜尋（輔助擴充實體候選詞）
+ └─ Qdrant 相似度搜尋（輔助擴充實體候選詞）
          │
          ▼ 實體列表
 Neo4j Cypher 圖譜遍歷（hop=1–4）
@@ -138,7 +144,8 @@ bi-encoder reranking + 動態 cap → model triples（送入 LLM）
 | 服務 | 技術 | 功能 |
 |------|------|------|
 | `api` | FastAPI + Python 3.12 | RAG pipeline + 4 道 guardrail |
-| `neo4j` | Neo4j 5 | SOP 知識圖譜（57 節點、92 條邊） |
+| `neo4j` | Neo4j 5 | SOP 知識圖譜（29 節點、48 條邊） |
+| `qdrant` | Qdrant v1.18 | SOP 文件向量庫（語意檢索 / 實體擴充） |
 | `vllm` | vLLM + Qwen2.5-7B-Instruct-AWQ-int4 | 本地 LLM 推論（OpenAI 相容） |
 
 ---
@@ -267,7 +274,7 @@ curl -N -X POST http://localhost:8000/v1/ask/stream \
 | 端點 | 說明 |
 |------|------|
 | `GET /health` | Liveness check |
-| `GET /v1/health` | Deep health（Neo4j + vLLM + Chroma） |
+| `GET /v1/health` | Deep health（Neo4j + vLLM + Qdrant） |
 | `POST /v1/ingest` | 動態新增節點和邊（含 source_file 版本追蹤） |
 | `GET /docs` | Swagger UI |
 

@@ -1,20 +1,26 @@
 """
-Ingest SOP markdown documents into the Chroma vector store.
+Ingest SOP markdown documents into the Qdrant vector store.
 
 Usage (inside Docker):
     docker compose run --rm api python scripts/ingest_vector.py
 
 Usage (local, from fab-sop-rag/):
-    CHROMA_DIR=./chroma_store python scripts/ingest_vector.py
+    QDRANT_URL=http://localhost:6333 python scripts/ingest_vector.py
 
 Each .md file in data/sop_docs/ is split into chunks of ~400 characters
-with 80-character overlap, then embedded and stored in Chroma.
-The collection name is "sop_docs" — same as the one used by the API's
-retrieval service so queries automatically hit this data.
+with 80-character overlap, then embedded and stored in Qdrant.
+The collection name comes from settings.qdrant_collection ("sop_docs") —
+the same collection the API's retrieval service reads, so queries
+automatically hit this data.
+
+The collection is recreated on every run (force_recreate=True) so that
+deleting a source .md file removes its chunks: a plain upsert would leave
+orphaned vectors behind for documents that no longer exist.
 """
 
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 # Allow `from app.config import settings` when running from the project root
@@ -29,9 +35,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _DOCS_DIR = Path(__file__).resolve().parent.parent / "data" / "sop_docs"
-_COLLECTION_NAME = "sop_docs"
 _CHUNK_SIZE = 400
 _CHUNK_OVERLAP = 80
+# Stable namespace so re-runs produce identical point IDs (idempotent upserts).
+_ID_NAMESPACE = uuid.UUID("a1b2c3d4-0000-4000-8000-000000000001")
 
 
 def _chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLAP) -> list[str]:
@@ -46,8 +53,9 @@ def _chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLA
 
 
 def main() -> None:
+    from langchain_core.documents import Document
     from langchain_huggingface import HuggingFaceEmbeddings
-    import chromadb
+    from langchain_qdrant import QdrantVectorStore
 
     md_files = sorted(_DOCS_DIR.glob("*.md"))
     if not md_files:
@@ -64,39 +72,38 @@ def main() -> None:
     logger.info("Loading embedding model: %s (device=%s)", settings.embedding_model, _model_kwargs["device"])
     embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_model_kwargs)
 
-    logger.info("Opening Chroma store at: %s", settings.chroma_dir)
-    client = chromadb.PersistentClient(path=settings.chroma_dir)
-    collection = client.get_or_create_collection(
-        name=_COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},
-    )
-
-    total_chunks = 0
+    documents: list[Document] = []
+    ids: list[str] = []
     for md_file in md_files:
         text = md_file.read_text(encoding="utf-8")
         chunks = _chunk_text(text)
         logger.info("  %s → %d chunks", md_file.name, len(chunks))
+        for i, chunk in enumerate(chunks):
+            documents.append(Document(
+                page_content=chunk,
+                metadata={"source": md_file.name, "chunk_index": i},
+            ))
+            ids.append(str(uuid.uuid5(_ID_NAMESPACE, f"{md_file.stem}__chunk{i:04d}")))
 
-        ids = [f"{md_file.stem}__chunk{i:04d}" for i in range(len(chunks))]
-        metadatas = [{"source": md_file.name, "chunk_index": i} for i in range(len(chunks))]
-
-        # Embed in one batch per file
-        vectors = embeddings.embed_documents(chunks)
-
-        collection.upsert(
-            ids=ids,
-            embeddings=vectors,
-            documents=chunks,
-            metadatas=metadatas,
-        )
-        total_chunks += len(chunks)
+    logger.info("Connecting to Qdrant at %s (collection=%s)", settings.qdrant_url, settings.qdrant_collection)
+    # force_recreate=True drops the collection first so removed source files
+    # leave no orphaned vectors; vector size + Cosine distance are inferred
+    # from the embedding model.
+    QdrantVectorStore.from_documents(
+        documents,
+        embedding=embeddings,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection,
+        ids=ids,
+        force_recreate=True,
+    )
 
     logger.info(
         "Vector ingest complete: %d files, %d chunks → collection=%r at %s",
         len(md_files),
-        total_chunks,
-        _COLLECTION_NAME,
-        settings.chroma_dir,
+        len(documents),
+        settings.qdrant_collection,
+        settings.qdrant_url,
     )
 
 
