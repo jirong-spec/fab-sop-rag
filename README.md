@@ -58,21 +58,52 @@ Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
 
 | 指標 | DEV（調過參） | **TEST（held-out）** |
 |------|--------------|---------------------|
-| Answer keyword-match | 100% | **97.7%** |
+| Answer keyword-match | 100% | **100%** |
 | Retrieval recall@k（model triples） | 100% | **100%** |
-| Answer correctness（LLM-judge） | 93.8% | **90.9%** |
+| Answer correctness（LLM-judge） | 100% | **100%** |
 
 負例（held-out）：拒答 **100%** · 離題攔截 **100%** · 注入攔截 **100%**。3 次重跑全 **±0.0**（temp=0 可重現）。
-LLM-judge 比 keyword 嚴格，抓出 keyword 漏掉的不完整答案（interlock、步驟序列各有一題僅 partial）。
 
-**誠實限制：**
-1. 語料僅 3 份 SOP / 48 邊，evidence-level recall 幾乎必然 100%（distinct 遍歷撈進近乎全圖），
-   **retrieval 尚未被真正壓力測試**——要更大的語料才看得出檢索差異。
-2. LLM-judge 用與生成相同的 vLLM，有 self-grading bias，故 90.9% 宜保留看待；
-   keyword 與 recall 為 model-independent 的交叉驗證。
+**但「太完美」本身就是警訊**：3 SOP / 48 邊的圖太小，2-hop 遍歷幾乎撈回整張圖，
+retrieval 根本沒被壓力測試（evidence recall 必然 100%）。要看真實水準，需要更大、有干擾的圖 ⤵
+
+### Scale 壓力測試：10-SOP 合成圖（找出並修掉 2 個 scaling bug）
+
+`scripts/gen_synthetic_sops.py` 確定性生成 7 份合成 SOP（→ **10 SOP / 93 節點 / 168 邊**），刻意讓
+`RFPowerSupply`、`N2PurgeSystem`、`TurboVacuumPump` 被多份 SOP 共用成 **hub**，製造「一堆長得很像、
+狀態卻不同的競爭邊」——這才是 retrieval 真正要解的 disambiguation。用 `fab_queries_scale.json`（15 題
+hub 題）評測，**暴露兩個小圖藏住的 bug**：
+
+1. dense 子圖回傳 ~100 條 triple，prompt 撐爆 4096 context → HTTP 400、整題生成失敗。
+2. `REQUIRES_STATUS / PRECONDITION / INTERLOCK` 邊只有 CamelCase ID，對中文問題相似度低 → 被 rerank cap 砍掉。
+
+修法：**(#1)** prompt 依 token 預算裁切（`answer_service`，絕不溢出 context）；
+**(#2)** 替缺 `description` 的邊型合成中文 gloss（`graph_store`，比照 NEXT_STEP/DEPENDS_ON 的 enrichment）。
+修前 / 修後（10-SOP held-out test）：
+
+| 指標（10-SOP TEST） | 修前 | **修後** |
+|------|------|----------|
+| Answer keyword-match | 84.3% | **96.2%** |
+| Retrieval recall@k（model） | 88.5% | **96.2%** |
+| Answer correctness（LLM-judge） | 84.6% | **98.1%** |
+| `step_requires_status` recall | 50% | **100%** |
+
+修後 `recall_model == recall_evidence`（96.2%）→ rerank/cap 不再丟掉已撈到的 gold；殘留 ~4% 來自
+entity 抽取 / 2-hop 覆蓋（1 題 interlock 未觸及），屬較難的 NER 問題。這兩個修正在 3-SOP 上也讓
+LLM-judge 90.9% → 100%（中文 gloss 讓答案更完整），**無回歸**。
+
+**誠實限制：** LLM-judge 用與生成相同的 vLLM，有 self-grading bias；keyword 與 recall 為
+model-independent 的交叉驗證。
 
 ```bash
+# 基準（3-SOP）
 docker compose exec -T api python scripts/eval_rigorous.py --runs 3
+
+# Scale 壓測（10-SOP fixture；不污染 seed，跑完用 git checkout 還原）
+python scripts/gen_synthetic_sops.py
+docker compose run --rm api python scripts/ingest_all.py
+docker compose run --rm api python scripts/eval_rigorous.py --queries data/sample_queries/fab_queries_scale.json
+git checkout data/graph_seed data/sop_docs
 ```
 
 ### Citation Traceability
