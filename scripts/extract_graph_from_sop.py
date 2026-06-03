@@ -65,17 +65,32 @@ SOP_DOCS_DIR = ROOT / "data" / "sop_docs"
 GRAPH_SEED_DIR = ROOT / "data" / "graph_seed"
 
 # Allowlists — LLM-generated values outside these sets are discarded
-VALID_LABELS = frozenset({
-    "SOPDocument", "SOPStep", "Equipment", "Anomaly", "ProcessCondition",
-})
-VALID_REL_TYPES = frozenset({
-    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
-    "DEFINED_IN", "REQUIRES_STATUS", "PRECONDITION",
-    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY",
-})
+VALID_LABELS = frozenset(
+    {
+        "SOPDocument",
+        "SOPStep",
+        "Equipment",
+        "Anomaly",
+        "ProcessCondition",
+    }
+)
+VALID_REL_TYPES = frozenset(
+    {
+        "TRIGGERS_SOP",
+        "FIRST_STEP",
+        "NEXT_STEP",
+        "DEPENDS_ON",
+        "DEFINED_IN",
+        "REQUIRES_STATUS",
+        "PRECONDITION",
+        "INTERLOCK_WITH",
+        "CROSS_DOC_DEPENDENCY",
+    }
+)
 
 
 # ── JSON parsing ──────────────────────────────────────────────────────────────
+
 
 def _parse_llm_json(raw: str) -> dict | None:
     """
@@ -241,6 +256,7 @@ CROSS_DOC_DEPENDENCY  SOPDocument → SOPDocument
 
 # ── Extraction ────────────────────────────────────────────────────────────────
 
+
 def extract_nodes(content: str) -> list[dict]:
     prompt = _NODE_PROMPT.format(content=content)
     try:
@@ -259,11 +275,7 @@ def extract_nodes(content: str) -> list[dict]:
 
 
 def extract_edges(content: str, nodes: list[dict]) -> list[dict]:
-    node_list = "\n".join(
-        f"  {n['properties']['id']} ({n['label']})"
-        for n in nodes
-        if "id" in n.get("properties", {})
-    )
+    node_list = "\n".join(f"  {n['properties']['id']} ({n['label']})" for n in nodes if "id" in n.get("properties", {}))
     prompt = _EDGE_PROMPT.format(content=content, node_list=node_list)
     try:
         raw = chat_completion(prompt, temperature=0.0, max_tokens=1800)
@@ -329,11 +341,7 @@ def derive_structural_edges(nodes: list[dict]) -> list[dict]:
     validate_edges drop rate that plagues LLM-generated structural edges.
     """
     edges = []
-    sop_ids = {
-        n["properties"]["id"]
-        for n in nodes
-        if n["label"] == "SOPDocument" and "id" in n.get("properties", {})
-    }
+    sop_ids = {n["properties"]["id"] for n in nodes if n["label"] == "SOPDocument" and "id" in n.get("properties", {})}
 
     for n in nodes:
         if n["label"] != "SOPStep":
@@ -346,30 +354,35 @@ def derive_structural_edges(nodes: list[dict]) -> list[dict]:
             continue
 
         # DEFINED_IN — every step belongs to its SOP document
-        edges.append({
-            "type": "DEFINED_IN",
-            "from_label": "SOPStep",
-            "from_id": step_id,
-            "to_label": "SOPDocument",
-            "to_id": sop_doc,
-            "properties": {},
-        })
+        edges.append(
+            {
+                "type": "DEFINED_IN",
+                "from_label": "SOPStep",
+                "from_id": step_id,
+                "to_label": "SOPDocument",
+                "to_id": sop_doc,
+                "properties": {},
+            }
+        )
 
         # FIRST_STEP — step_number 1 is the entry point of the SOP
         if step_num == 1:
-            edges.append({
-                "type": "FIRST_STEP",
-                "from_label": "SOPDocument",
-                "from_id": sop_doc,
-                "to_label": "SOPStep",
-                "to_id": step_id,
-                "properties": {},
-            })
+            edges.append(
+                {
+                    "type": "FIRST_STEP",
+                    "from_label": "SOPDocument",
+                    "from_id": sop_doc,
+                    "to_label": "SOPStep",
+                    "to_id": step_id,
+                    "properties": {},
+                }
+            )
 
     return edges
 
 
 # ── Merge helpers ─────────────────────────────────────────────────────────────
+
 
 def merge_nodes(existing: list[dict], new: list[dict]) -> tuple[list[dict], int]:
     seen = {n["properties"]["id"] for n in existing if "id" in n.get("properties", {})}
@@ -399,6 +412,7 @@ def merge_edges(existing: list[dict], new: list[dict]) -> tuple[list[dict], int]
 
 # ── Per-file pipeline ─────────────────────────────────────────────────────────
 
+
 def process_file(md_path: Path) -> tuple[list[dict], list[dict]]:
     logger.info("Processing: %s", md_path.name)
     content = md_path.read_text(encoding="utf-8")
@@ -424,24 +438,28 @@ def process_file(md_path: Path) -> tuple[list[dict], list[dict]]:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Extract knowledge graph nodes and edges from SOP Markdown files"
-    )
+    parser = argparse.ArgumentParser(description="Extract knowledge graph nodes and edges from SOP Markdown files")
     parser.add_argument(
-        "--file", type=str,
+        "--file",
+        type=str,
         help="Process a single file (default: all *.md in data/sop_docs/)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Print extracted JSON to stdout, do not write any files",
     )
     parser.add_argument(
-        "--merge", action="store_true",
+        "--merge",
+        action="store_true",
         help="Merge results into nodes.json / edges.json (default: write to *_extracted.json)",
     )
     parser.add_argument(
-        "--output-dir", type=str, default=str(GRAPH_SEED_DIR),
+        "--output-dir",
+        type=str,
+        default=str(GRAPH_SEED_DIR),
         help=f"Output directory (default: {GRAPH_SEED_DIR})",
     )
     args = parser.parse_args()
@@ -477,14 +495,20 @@ def main() -> None:
                 continue
             all_nodes, n_added = merge_nodes(all_nodes, nodes)
             all_edges, e_added = merge_edges(all_edges, edges)
-            logger.info("  [%s] done — running total: %d nodes (+%d), %d edges (+%d)",
-                        f.name, len(all_nodes), n_added, len(all_edges), e_added)
+            logger.info(
+                "  [%s] done — running total: %d nodes (+%d), %d edges (+%d)",
+                f.name,
+                len(all_nodes),
+                n_added,
+                len(all_edges),
+                e_added,
+            )
 
-    print(f"\n{'='*55}")
-    print(f"  Extraction complete")
+    print(f"\n{'=' * 55}")
+    print("  Extraction complete")
     print(f"  Nodes : {len(all_nodes)}")
     print(f"  Edges : {len(all_edges)}")
-    print(f"{'='*55}")
+    print(f"{'=' * 55}")
 
     if not all_nodes:
         logger.error("Nothing extracted — check that vLLM is running and the SOP files exist")
@@ -504,40 +528,31 @@ def main() -> None:
         nodes_path = out_dir / "nodes.json"
         edges_path = out_dir / "edges.json"
 
-        existing_nodes = (
-            json.loads(nodes_path.read_text(encoding="utf-8"))
-            if nodes_path.exists() else []
-        )
-        existing_edges = (
-            json.loads(edges_path.read_text(encoding="utf-8"))
-            if edges_path.exists() else []
-        )
+        existing_nodes = json.loads(nodes_path.read_text(encoding="utf-8")) if nodes_path.exists() else []
+        existing_edges = json.loads(edges_path.read_text(encoding="utf-8")) if edges_path.exists() else []
 
         all_nodes, added_n = merge_nodes(existing_nodes, all_nodes)
         all_edges, added_e = merge_edges(existing_edges, all_edges)
-        logger.info("After merge: %d nodes (%+d new), %d edges (%+d new)",
-                    len(all_nodes), added_n, len(all_edges), added_e)
+        logger.info(
+            "After merge: %d nodes (%+d new), %d edges (%+d new)", len(all_nodes), added_n, len(all_edges), added_e
+        )
     else:
         nodes_path = out_dir / "nodes_extracted.json"
         edges_path = out_dir / "edges_extracted.json"
 
-    nodes_path.write_text(
-        json.dumps(all_nodes, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    edges_path.write_text(
-        json.dumps(all_edges, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    nodes_path.write_text(json.dumps(all_nodes, ensure_ascii=False, indent=2), encoding="utf-8")
+    edges_path.write_text(json.dumps(all_edges, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"\n  nodes → {nodes_path.relative_to(ROOT)}")
     print(f"  edges → {edges_path.relative_to(ROOT)}")
 
     if not args.merge:
-        print(f"\n  Review the files, then merge into graph seed:")
-        print(f"  python scripts/extract_graph_from_sop.py --merge")
+        print("\n  Review the files, then merge into graph seed:")
+        print("  python scripts/extract_graph_from_sop.py --merge")
 
-    print(f"\n  Ingest into Neo4j:")
-    print(f"  python scripts/ingest_graph.py")
-    print(f"  (or: docker compose run --rm api python scripts/ingest_all.py)")
+    print("\n  Ingest into Neo4j:")
+    print("  python scripts/ingest_graph.py")
+    print("  (or: docker compose run --rm api python scripts/ingest_all.py)")
 
 
 if __name__ == "__main__":

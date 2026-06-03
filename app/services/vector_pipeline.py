@@ -10,7 +10,7 @@ import time
 
 from app.schemas import AskRequest, AskResponse, GuardrailResult
 from app.services.answer_service import LLM_ERROR_ANSWER
-from app.services.guardrails import guard_injection, guard_topic, guard_grounding
+from app.services.guardrails import guard_grounding, guard_injection, guard_topic
 from app.services.llm_client import chat_completion
 from app.services.vector_store import similarity_search
 
@@ -33,11 +33,15 @@ _PROMPT_TEMPLATE = """\
 def _guard_evidence(chunks: list[str]) -> GuardrailResult:
     if not chunks:
         return GuardrailResult(
-            stage="retrieval", name="evidence_sufficiency", passed=False,
+            stage="retrieval",
+            name="evidence_sufficiency",
+            passed=False,
             reason="未檢索到任何 SOP 文件片段，拒絕生成以避免幻覺",
         )
     return GuardrailResult(
-        stage="retrieval", name="evidence_sufficiency", passed=True,
+        stage="retrieval",
+        name="evidence_sufficiency",
+        passed=True,
         reason=f"檢索到 {len(chunks)} 個 SOP 文件片段，證據充足",
     )
 

@@ -66,6 +66,7 @@ def main() -> None:
 
     try:
         import torch
+
         _model_kwargs = {"device": "cuda"} if torch.cuda.is_available() else {"device": "cpu"}
     except ImportError:
         _model_kwargs = {"device": "cpu"}
@@ -79,10 +80,12 @@ def main() -> None:
         chunks = _chunk_text(text)
         logger.info("  %s → %d chunks", md_file.name, len(chunks))
         for i, chunk in enumerate(chunks):
-            documents.append(Document(
-                page_content=chunk,
-                metadata={"source": md_file.name, "chunk_index": i},
-            ))
+            documents.append(
+                Document(
+                    page_content=chunk,
+                    metadata={"source": md_file.name, "chunk_index": i},
+                )
+            )
             ids.append(str(uuid.uuid5(_ID_NAMESPACE, f"{md_file.stem}__chunk{i:04d}")))
 
     logger.info("Connecting to Qdrant at %s (collection=%s)", settings.qdrant_url, settings.qdrant_collection)

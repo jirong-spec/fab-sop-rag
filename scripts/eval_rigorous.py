@@ -44,6 +44,7 @@ _NO_INFO_MARKERS = ["不在目前", "涵蓋範圍", "無法回答", "查無", "�
 
 # ── Metric primitives ──────────────────────────────────────────────────────────
 
+
 def keyword_rate(answer: str, keywords: list[str]) -> float:
     if not keywords:
         return 1.0
@@ -94,6 +95,7 @@ _JUDGE_REFUSAL_PROMPT = """\
 def _judge(prompt: str) -> str:
     from app.services.llm_client import chat_completion
     from app.utils.json_utils import extract_json
+
     try:
         raw = chat_completion(prompt, temperature=0.0, max_tokens=64)
         data = extract_json(raw) or {}
@@ -113,6 +115,7 @@ def judge_refusal(q: str, gold: str, ans: str) -> float:
 
 
 # ── Per-query scoring ───────────────────────────────────────────────────────────
+
 
 def score_once(query: dict, use_judge: bool) -> dict:
     from app.schemas import AskRequest
@@ -148,6 +151,7 @@ def score_once(query: dict, use_judge: bool) -> dict:
 
 # ── Aggregation ─────────────────────────────────────────────────────────────────
 
+
 def _mean(xs: list[float]) -> float:
     xs = [x for x in xs if x is not None]
     return sum(xs) / len(xs) if xs else 0.0
@@ -175,10 +179,11 @@ def _ms(vals: list[float]) -> str:
         return "  n/a "
     m = statistics.mean(vals)
     sd = statistics.pstdev(vals) if len(vals) > 1 else 0.0
-    return f"{m*100:5.1f}% ±{sd*100:4.1f}"
+    return f"{m * 100:5.1f}% ±{sd * 100:4.1f}"
 
 
 # ── Report ──────────────────────────────────────────────────────────────────────
+
 
 def render(per_run_aggs: dict, runs: int, by_cat: dict, use_judge: bool) -> str:
     L = ["", "=" * 74, f"  Fab SOP RAG — Rigorous Eval  (runs={runs}, mean ± std across runs)", "=" * 74, ""]
@@ -197,19 +202,25 @@ def render(per_run_aggs: dict, runs: int, by_cat: dict, use_judge: bool) -> str:
         L.append(f"  {label:<22}{_ms(dev):>22}{_ms(test):>22}")
     L.append("")
     L.append("  Negatives (held-out, test split):")
-    for label, key in [("  refusal accuracy", "refusal_acc"), ("  off-topic block acc", "offtopic_acc"), ("  injection block acc", "injection_acc")]:
+    for label, key in [
+        ("  refusal accuracy", "refusal_acc"),
+        ("  off-topic block acc", "offtopic_acc"),
+        ("  injection block acc", "injection_acc"),
+    ]:
         L.append(f"  {label:<28}{_ms([per_run_aggs['all'][i][key] for i in range(runs)]):>20}")
     L.append("")
     lat = [per_run_aggs["all"][i]["latency_ms"] for i in range(runs)]
-    L.append(f"  avg latency: {statistics.mean(lat):.0f} ms  (±{statistics.pstdev(lat) if runs>1 else 0:.0f})")
+    L.append(f"  avg latency: {statistics.mean(lat):.0f} ms  (±{statistics.pstdev(lat) if runs > 1 else 0:.0f})")
     L.append("")
     L.append("  Per-category answerable (keyword / recall_model / judge, mean over runs):")
     for cat, vals in sorted(by_cat.items()):
         kw = _mean([v["keyword"] for v in vals])
         rc = _mean([v["recall_model"] for v in vals])
         jd = _mean([v["judge"] for v in vals if v["judge"] is not None]) if use_judge else None
-        jd_s = f"{jd*100:4.0f}%" if jd is not None else "  - "
-        L.append(f"    {cat:<26} kw {kw*100:4.0f}%   recall {rc*100:4.0f}%   judge {jd_s}   (n={len(vals)//runs})")
+        jd_s = f"{jd * 100:4.0f}%" if jd is not None else "  - "
+        L.append(
+            f"    {cat:<26} kw {kw * 100:4.0f}%   recall {rc * 100:4.0f}%   judge {jd_s}   (n={len(vals) // runs})"
+        )
     L.append("")
     L.append("  Caveats: on a small/sparse graph, evidence-recall is near-trivial (traversal returns")
     L.append("           most of it); LLM-judge shares the generation vLLM (self-grading bias).")
@@ -219,14 +230,19 @@ def render(per_run_aggs: dict, runs: int, by_cat: dict, use_judge: bool) -> str:
 
 # ── Main ────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--no-judge", action="store_true")
     ap.add_argument("--output", type=str, default="")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--queries", type=str, default=str(QUERIES_PATH),
-                    help="query set (default fab_queries_v2.json; use fab_queries_scale.json for the 10-SOP stress fixture)")
+    ap.add_argument(
+        "--queries",
+        type=str,
+        default=str(QUERIES_PATH),
+        help="query set (default fab_queries_v2.json; use fab_queries_scale.json for the 10-SOP stress fixture)",
+    )
     args = ap.parse_args()
     use_judge = not args.no_judge
 
@@ -235,10 +251,13 @@ def main() -> None:
 
     # pre-warm
     try:
-        from app.services.vector_store import _get_reranker_embeddings, _get_vector_store
         from app.services.graph_store import _get_driver
         from app.services.llm_client import chat_completion
-        _get_reranker_embeddings().embed_query("warmup"); _get_vector_store(); _get_driver()
+        from app.services.vector_store import _get_reranker_embeddings, _get_vector_store
+
+        _get_reranker_embeddings().embed_query("warmup")
+        _get_vector_store()
+        _get_driver()
         chat_completion("ping", max_tokens=1)
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] pre-warm: {exc}")
@@ -278,7 +297,9 @@ def main() -> None:
     if args.output:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"per_run": per_run, "by_qid": raw_by_qid}, ensure_ascii=False, indent=2), encoding="utf-8")
+        out.write_text(
+            json.dumps({"per_run": per_run, "by_qid": raw_by_qid}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         print(f"[INFO] saved {out}")
 
 

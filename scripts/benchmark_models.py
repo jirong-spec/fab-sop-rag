@@ -11,21 +11,20 @@ Usage (from project root):
 
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
 MODELS = [
-    {"name": "Qwen2.5-3B-Instruct",          "quantization": None,   "max_model_len": 4096},
+    {"name": "Qwen2.5-3B-Instruct", "quantization": None, "max_model_len": 4096},
     {"name": "Qwen2.5-3B-Instruct-GPTQ-int8", "quantization": "gptq", "max_model_len": 4096},
     {"name": "Qwen2.5-3B-Instruct-GPTQ-int4", "quantization": "gptq", "max_model_len": 4096},
-    {"name": "Qwen2.5-3B-Instruct-AWQ-int4",  "quantization": "awq",  "max_model_len": 4096},
-    {"name": "Qwen2.5-7B-Instruct-AWQ-int4",  "quantization": "awq",  "max_model_len": 4096},
+    {"name": "Qwen2.5-3B-Instruct-AWQ-int4", "quantization": "awq", "max_model_len": 4096},
+    {"name": "Qwen2.5-7B-Instruct-AWQ-int4", "quantization": "awq", "max_model_len": 4096},
 ]
 
-VLLM_READY_TIMEOUT = 900   # seconds to wait for vllm to load a model
+VLLM_READY_TIMEOUT = 900  # seconds to wait for vllm to load a model
 VLLM_POLL_INTERVAL = 10
 
 
@@ -53,15 +52,24 @@ def _write_override(model: dict) -> Path:
     """
     served_name = _get_api_llm_model()
     cmd = [
-        "--model",        f"/llm/{model['name']}",
-        "--host",         "0.0.0.0",
-        "--port",         "8000",
-        "--served-model-name", served_name,
-        "--device",       "cuda",
-        "--max-model-len", str(model["max_model_len"]),
-        "--kv-cache-dtype", "auto",
-        "--tensor-parallel-size", "1",
-        "--gpu-memory-utilization", "0.8",
+        "--model",
+        f"/llm/{model['name']}",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--served-model-name",
+        served_name,
+        "--device",
+        "cuda",
+        "--max-model-len",
+        str(model["max_model_len"]),
+        "--kv-cache-dtype",
+        "auto",
+        "--tensor-parallel-size",
+        "1",
+        "--gpu-memory-utilization",
+        "0.8",
     ]
     if model["quantization"]:
         cmd += ["--quantization", model["quantization"]]
@@ -71,7 +79,7 @@ def _write_override(model: dict) -> Path:
 
     lines = ["services:", "  vllm:", "    command:"]
     for part in cmd:
-        lines.append(f"      - \"{part}\"")
+        lines.append(f'      - "{part}"')
 
     override_path = PROJECT_ROOT / "docker-compose.benchmark-override.yml"
     override_path.write_text("\n".join(lines) + "\n")
@@ -80,13 +88,15 @@ def _write_override(model: dict) -> Path:
 
 def _wait_for_vllm(timeout: int = VLLM_READY_TIMEOUT) -> bool:
     """Poll localhost:8299/v1/models until 200 or timeout."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
+
     deadline = time.time() + timeout
     dots = 0
     while time.time() < deadline:
         try:
             urllib.request.urlopen("http://localhost:8299/v1/models", timeout=5)
-            print(f"\n  vLLM ready")
+            print("\n  vLLM ready")
             return True
         except Exception:
             print(".", end="", flush=True)
@@ -103,11 +113,21 @@ def _run_eval(model_name: str) -> dict | None:
     """Run eval_compare.py inside the api container, return parsed result dict."""
     container_path = f"/app/data/eval_results/benchmark_{model_name}.json"
 
-    proc = _run([
-        "docker", "compose", "exec", "-T", "api",
-        "python", "scripts/eval_compare.py",
-        "--output", container_path,
-    ], capture_output=True, text=True)
+    proc = _run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "api",
+            "python",
+            "scripts/eval_compare.py",
+            "--output",
+            container_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
 
     print(proc.stdout[-2000:] if proc.stdout else "")
     if proc.returncode != 0:
@@ -117,7 +137,9 @@ def _run_eval(model_name: str) -> dict | None:
     # Read result directly from inside the container (no host mount needed)
     cat = subprocess.run(
         ["docker", "compose", "exec", "-T", "api", "cat", container_path],
-        capture_output=True, text=True, cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
     )
     if cat.returncode != 0:
         print(f"  [ERROR] could not read result from container: {cat.stderr[:200]}")
@@ -131,15 +153,15 @@ def _parse_result(data: dict) -> dict:
     if not data:
         return {}
 
-    queries  = data.get("queries", [])
-    results  = data.get("results", {})
+    queries = data.get("queries", [])
+    results = data.get("results", {})
 
     g_kw_hits = g_kw_total = 0
     g_latencies: list[int] = []
 
     for q in queries:
-        qid  = q["id"]
-        res  = results.get(qid, {})
+        qid = q["id"]
+        res = results.get(qid, {})
         g_resp = res.get("graph", {})
         behavior = q.get("expected_behavior", "retrieved_and_answered")
         keywords = q.get("expected_keywords", [])
@@ -147,7 +169,7 @@ def _parse_result(data: dict) -> dict:
         g_latencies.append(g_resp.get("latency_ms", 0))
 
         if behavior == "blocked_by_topic_guard":
-            continue   # block queries counted separately; skip for keyword score
+            continue  # block queries counted separately; skip for keyword score
 
         haystack = g_resp.get("answer", "")
         hits = sum(1 for kw in keywords if kw.lower() in haystack.lower())
@@ -155,11 +177,11 @@ def _parse_result(data: dict) -> dict:
         g_kw_total += len(keywords)
 
     avg_ms = int(sum(g_latencies) / len(g_latencies)) if g_latencies else 0
-    pct    = g_kw_hits / g_kw_total * 100 if g_kw_total else 0
+    pct = g_kw_hits / g_kw_total * 100 if g_kw_total else 0
 
     return {
-        "score":  f"{g_kw_hits}/{g_kw_total}",
-        "pct":    f"{pct:.1f}%",
+        "score": f"{g_kw_hits}/{g_kw_total}",
+        "pct": f"{pct:.1f}%",
         "avg_ms": avg_ms,
     }
 
@@ -185,19 +207,28 @@ def main():
         # Write override and restart vllm
         override = _write_override(model)
         print(f"\n[Step 1] Restarting vLLM with {name}...")
-        _run([
-            "docker", "compose",
-            "-f", "docker-compose.yml",
-            "-f", str(override.name),
-            "up", "-d", "--no-deps", "--force-recreate", "vllm",
-        ])
+        _run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.yml",
+                "-f",
+                str(override.name),
+                "up",
+                "-d",
+                "--no-deps",
+                "--force-recreate",
+                "vllm",
+            ]
+        )
 
         print(f"[Step 2] Waiting for vLLM to load model (up to {VLLM_READY_TIMEOUT}s)...")
         if not _wait_for_vllm():
             results.append({"model": name, "score": "TIMEOUT", "pct": "-", "avg_ms": "-"})
             continue
 
-        print(f"[Step 3] Running eval_compare.py...")
+        print("[Step 3] Running eval_compare.py...")
         data = _run_eval(name)
         metrics = _parse_result(data)
         metrics["model"] = name
@@ -220,7 +251,9 @@ def main():
     print(header)
     print("-" * 66)
     for r in results:
-        print(f"{r['model']:<40} {str(r.get('score','?')):>8} {str(r.get('pct','?')):>8} {str(r.get('avg_ms','?')):>8}")
+        print(
+            f"{r['model']:<40} {str(r.get('score', '?')):>8} {str(r.get('pct', '?')):>8} {str(r.get('avg_ms', '?')):>8}"
+        )
     print("=" * 60)
 
     # Save summary

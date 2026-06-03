@@ -39,9 +39,9 @@ def extract_candidate_tokens(text: str) -> list[str]:
     then TitleCase words, then acronyms).
     """
     raw: list[str] = (
-        _ENTITY_CODE.findall(text)   # most specific: SOP_001, EtchStation_SOP_001
+        _ENTITY_CODE.findall(text)  # most specific: SOP_001, EtchStation_SOP_001
         + _TITLE_CASE.findall(text)  # compound proper nouns
-        + _ACRONYM.findall(text)     # ALL-CAPS acronyms
+        + _ACRONYM.findall(text)  # ALL-CAPS acronyms
     )
     seen: set[str] = set()
     result: list[str] = []
@@ -50,7 +50,6 @@ def extract_candidate_tokens(text: str) -> list[str]:
             seen.add(tok)
             result.append(tok)
     return result
-
 
 
 # SOP document ID pattern: SOP_Etch_001, SOP_Pump_002, SOP_Vent_003, …

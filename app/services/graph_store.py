@@ -1,9 +1,9 @@
 import logging
 import threading
 
-from neo4j import GraphDatabase, Driver
+from neo4j import Driver, GraphDatabase
 from neo4j.exceptions import ServiceUnavailable, SessionExpired
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 
@@ -147,7 +147,10 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     if len(records) == limit:
         logger.warning(
             "graph_expand(%s) hit LIMIT %d for entities=%s hop=%d — results may be truncated",
-            mode, limit, entities, hop,
+            mode,
+            limit,
+            entities,
+            hop,
         )
 
     def _add(triple: str | None) -> None:

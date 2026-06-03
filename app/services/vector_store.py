@@ -22,6 +22,7 @@ def _cuda_kwargs() -> dict:
     """Return model_kwargs with CUDA device if available, else CPU."""
     try:
         import torch
+
         if torch.cuda.is_available():
             logger.info("Embedding device: cuda")
             return {"device": "cuda"}
@@ -38,9 +39,7 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
         with _embeddings_lock:
             if _embeddings is None:
                 logger.info("Loading embedding model: %s", settings.embedding_model)
-                _embeddings = HuggingFaceEmbeddings(
-                    model_name=settings.embedding_model, model_kwargs=_cuda_kwargs()
-                )
+                _embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_cuda_kwargs())
     return _embeddings
 
 
@@ -55,9 +54,7 @@ def _get_reranker_embeddings() -> HuggingFaceEmbeddings:
             if _reranker_embeddings is None:
                 model = settings.reranker_model or settings.embedding_model
                 logger.info("Loading reranker model: %s", model)
-                _reranker_embeddings = HuggingFaceEmbeddings(
-                    model_name=model, model_kwargs=_cuda_kwargs()
-                )
+                _reranker_embeddings = HuggingFaceEmbeddings(model_name=model, model_kwargs=_cuda_kwargs())
     return _reranker_embeddings
 
 
@@ -74,7 +71,8 @@ def _get_vector_store() -> QdrantVectorStore:
             if _vector_store is None:
                 logger.info(
                     "Connecting to Qdrant at %s (collection=%s)",
-                    settings.qdrant_url, settings.qdrant_collection,
+                    settings.qdrant_url,
+                    settings.qdrant_collection,
                 )
                 _vector_store = QdrantVectorStore.from_existing_collection(
                     embedding=_get_embeddings(),

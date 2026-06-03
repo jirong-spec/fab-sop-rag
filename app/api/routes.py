@@ -16,7 +16,6 @@ Two routers are registered in main.py:
 import asyncio
 import logging
 import time
-from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,7 +23,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.auth import require_api_key
 from app.config import APP_VERSION, settings
-from app.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse, IngestRequest, IngestResponse, ServiceStatus
+from app.schemas import (
+    AskRequest,
+    AskResponse,
+    HealthResponse,
+    IngestRequest,
+    IngestResponse,
+    ServiceStatus,
+)
 from app.services.pipeline import run_pipeline, run_pipeline_stream
 from app.utils.context import get_request_id
 
@@ -55,10 +61,12 @@ v1_router = APIRouter(tags=["Knowledge Query"])
 
 # ── Deep health ───────────────────────────────────────────────────────────────
 
+
 def _probe_neo4j() -> ServiceStatus:
     """Synchronous Neo4j probe — run in a thread via asyncio.to_thread."""
     try:
         from app.services.graph_store import _get_driver
+
         t0 = time.perf_counter()
         driver = _get_driver()
         with driver.session() as session:
@@ -88,6 +96,7 @@ async def _probe_vllm() -> ServiceStatus:
 def _probe_qdrant() -> ServiceStatus:
     try:
         from qdrant_client import QdrantClient
+
         t0 = time.perf_counter()
         client = QdrantClient(url=settings.qdrant_url)
         if not client.collection_exists(settings.qdrant_collection):
@@ -100,7 +109,8 @@ def _probe_qdrant() -> ServiceStatus:
         latency_ms = int((time.perf_counter() - t0) * 1000)
         if count == 0:
             return ServiceStatus(
-                status="degraded", latency_ms=latency_ms,
+                status="degraded",
+                latency_ms=latency_ms,
                 detail=f"{settings.qdrant_collection} collection is empty — run vector ingest first",
             )
         return ServiceStatus(status="ok", latency_ms=latency_ms)
@@ -167,6 +177,7 @@ async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
 
 # ── SOP knowledge query ───────────────────────────────────────────────────────
 
+
 @v1_router.post(
     "/ask",
     summary="Query the SOP knowledge base",
@@ -191,12 +202,11 @@ async def ask(
     logger.info("POST /v1/ask | question=%r", req.question[:80])
     result: AskResponse = await asyncio.to_thread(run_pipeline, req)
     result.request_id = req_id
-    return JSONResponse(
-        content=result.model_dump(by_alias=True, exclude_none=True)
-    )
+    return JSONResponse(content=result.model_dump(by_alias=True, exclude_none=True))
 
 
 # ── SOP knowledge query (streaming) ──────────────────────────────────────────
+
 
 @v1_router.post(
     "/ask/stream",
@@ -205,7 +215,7 @@ async def ask(
         "Same guardrail pipeline as `/v1/ask`, but tokens stream via "
         "Server-Sent Events so the first word appears in <200ms.\n\n"
         "Event types:\n"
-        "- `token` — one LLM output token (`{\"type\":\"token\",\"text\":\"...\"}`)\n"
+        '- `token` — one LLM output token (`{"type":"token","text":"..."}`)\n'
         "- `done`  — final metadata after guard_grounding completes\n"
         "- `blocked` — a guardrail blocked the request\n\n"
         "guard_grounding runs after the last token; clients see the full answer "
@@ -223,6 +233,7 @@ async def ask_stream(
     async def _generate():
         import contextvars
         import threading
+
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue(maxsize=256)
         _SENTINEL = object()
@@ -260,14 +271,32 @@ async def ask_stream(
 
 # ── SOP knowledge graph ingest ────────────────────────────────────────────────
 
-_ALLOWED_NODE_LABELS = frozenset({
-    "SOPDocument", "SOPStep", "Anomaly", "Equipment", "ProcessCondition", "Node",
-})
-_ALLOWED_REL_TYPES = frozenset({
-    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
-    "REQUIRES_STATUS", "PRECONDITION", "DEFINED_IN",
-    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY", "RELATES_TO",
-})
+_ALLOWED_NODE_LABELS = frozenset(
+    {
+        "SOPDocument",
+        "SOPStep",
+        "Anomaly",
+        "Equipment",
+        "ProcessCondition",
+        "Node",
+    }
+)
+_ALLOWED_REL_TYPES = frozenset(
+    {
+        "TRIGGERS_SOP",
+        "FIRST_STEP",
+        "NEXT_STEP",
+        "DEPENDS_ON",
+        "REQUIRES_STATUS",
+        "PRECONDITION",
+        "DEFINED_IN",
+        "INTERLOCK_WITH",
+        "CROSS_DOC_DEPENDENCY",
+        "RELATES_TO",
+    }
+)
+
+
 def _validate_identifier(value: str, allowed: frozenset[str], field: str) -> str:
     if value not in allowed:
         raise ValueError(f"Disallowed {field}: {value!r}. Allowed: {sorted(allowed)}")
@@ -294,11 +323,7 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
                     node_id = props.get("id", "")
                     if not node_id:
                         raise HTTPException(status_code=422, detail=f"Node missing 'id' property: {node}")
-                    cypher = (
-                        f"MERGE (n:{label} {{id: $id}}) "
-                        "SET n += $props "
-                        "RETURN n.id AS id"
-                    )
+                    cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props RETURN n.id AS id"
                     tx.run(cypher, id=node_id, props=props)
                     nodes_merged += 1
 
@@ -319,10 +344,7 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
                         f"MATCH (b{':' + to_label if to_label else ''} {{id: $to_id}}) "
                     )
                     cypher = (
-                        match_clause
-                        + f"MERGE (a)-[r:{rel_type}]->(b) "
-                        + "SET r += $props "
-                        + "RETURN type(r) AS rel"
+                        match_clause + f"MERGE (a)-[r:{rel_type}]->(b) " + "SET r += $props " + "RETURN type(r) AS rel"
                     )
                     result = tx.run(cypher, from_id=from_id, to_id=to_id, props=props)
                     if result.single():
@@ -332,7 +354,7 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
 
                 tx.commit()
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except HTTPException:
         raise  # propagate intended 4xx (e.g. node missing 'id') instead of masking it as 200 error
     except Exception as exc:
@@ -347,7 +369,10 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
 
     logger.info(
         "Ingest complete | source=%s nodes=%d edges=%d skipped=%d",
-        req.source_file, nodes_merged, edges_merged, edges_skipped,
+        req.source_file,
+        nodes_merged,
+        edges_merged,
+        edges_skipped,
     )
     return IngestResponse(
         status="ok",
@@ -374,6 +399,9 @@ async def ingest(
     req_id = get_request_id()
     logger.info(
         "POST /v1/ingest | source=%s nodes=%d edges=%d req_id=%s",
-        req.source_file, len(req.nodes), len(req.edges), req_id,
+        req.source_file,
+        len(req.nodes),
+        len(req.edges),
+        req_id,
     )
     return await asyncio.to_thread(_run_ingest, req)

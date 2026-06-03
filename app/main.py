@@ -5,10 +5,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.routes import root_router, v1_router
 from app.config import APP_VERSION
 from app.logging_config import setup_logging
 from app.middleware.request_id import RequestIDMiddleware
-from app.api.routes import root_router, v1_router
 from app.utils.context import get_request_id
 
 setup_logging()
@@ -20,7 +20,8 @@ async def lifespan(app: FastAPI):
     logger.info("Fab SOP Knowledge Query API starting up (version %s)", APP_VERSION)
     # Pre-warm all heavy resources so the first real request has normal latency.
     try:
-        from app.services.vector_store import _get_vector_store, _get_embeddings, _get_reranker_embeddings
+        from app.services.vector_store import _get_embeddings, _get_reranker_embeddings, _get_vector_store
+
         _get_embeddings().embed_query("warmup")
         _get_reranker_embeddings().embed_query("warmup")
         _get_vector_store()
@@ -29,12 +30,14 @@ async def lifespan(app: FastAPI):
         logger.warning("Warm-up vector store failed (non-fatal): %s", e)
     try:
         from app.services.graph_store import _get_driver
+
         _get_driver()
         logger.info("Warm-up: Neo4j driver connected")
     except Exception as e:
         logger.warning("Warm-up Neo4j failed (non-fatal): %s", e)
     try:
         from app.services.llm_client import chat_completion
+
         chat_completion("ping", max_tokens=1)
         logger.info("Warm-up: LLM endpoint reachable")
     except Exception as e:
@@ -70,6 +73,7 @@ app.add_middleware(RequestIDMiddleware)
 
 # ── Global exception handlers ─────────────────────────────────────────────────
 
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Return 422 with a uniform error envelope that includes the request ID."""
@@ -96,7 +100,8 @@ async def _generic_error_handler(request: Request, exc: Exception) -> JSONRespon
         },
     )
 
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-app.include_router(root_router)            # GET /health  (liveness, no auth)
+app.include_router(root_router)  # GET /health  (liveness, no auth)
 app.include_router(v1_router, prefix="/v1")  # GET /v1/health, POST /v1/ask

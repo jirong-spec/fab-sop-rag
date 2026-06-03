@@ -2,8 +2,8 @@ import logging
 import os
 from collections.abc import Iterator
 
-from openai import OpenAI, APIError, APITimeoutError, APIConnectionError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 

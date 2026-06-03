@@ -1,14 +1,14 @@
 import json
-from typing import Any, Optional
+from typing import Any
 
 
-def extract_json(text: str) -> Optional[dict[str, Any]]:
+def extract_json(text: str) -> dict[str, Any] | None:
     """Extract the first JSON object from a string, tolerating surrounding text.
 
     Uses depth-counting rather than a regex so that `}` characters inside
     string values do not prematurely close the match.
     """
-    start = text.find('{')
+    start = text.find("{")
     if start == -1:
         return None
 
@@ -19,7 +19,7 @@ def extract_json(text: str) -> Optional[dict[str, Any]]:
         if escape:
             escape = False
             continue
-        if ch == '\\' and in_string:
+        if ch == "\\" and in_string:
             escape = True
             continue
         if ch == '"':
@@ -27,13 +27,13 @@ def extract_json(text: str) -> Optional[dict[str, Any]]:
             continue
         if in_string:
             continue
-        if ch == '{':
+        if ch == "{":
             depth += 1
-        elif ch == '}':
+        elif ch == "}":
             depth -= 1
             if depth == 0:
                 try:
-                    return json.loads(text[start:i + 1])
+                    return json.loads(text[start : i + 1])
                 except json.JSONDecodeError:
                     return None
     return None

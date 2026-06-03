@@ -12,7 +12,8 @@ Future: replace with JWT / OAuth2 middleware for production deployments.
 
 import logging
 import secrets
-from fastapi import Security, HTTPException, status
+
+from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
 from app.config import settings

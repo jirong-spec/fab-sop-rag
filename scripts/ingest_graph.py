@@ -30,11 +30,20 @@ logger = logging.getLogger(__name__)
 _GRAPH_SEED_DIR = Path(__file__).resolve().parent.parent / "data" / "graph_seed"
 
 _ALLOWED_NODE_LABELS = frozenset({"SOPDocument", "SOPStep", "Anomaly", "Equipment", "ProcessCondition", "Node"})
-_ALLOWED_REL_TYPES = frozenset({
-    "TRIGGERS_SOP", "FIRST_STEP", "NEXT_STEP", "DEPENDS_ON",
-    "REQUIRES_STATUS", "PRECONDITION", "DEFINED_IN",
-    "INTERLOCK_WITH", "CROSS_DOC_DEPENDENCY", "RELATES_TO",
-})
+_ALLOWED_REL_TYPES = frozenset(
+    {
+        "TRIGGERS_SOP",
+        "FIRST_STEP",
+        "NEXT_STEP",
+        "DEPENDS_ON",
+        "REQUIRES_STATUS",
+        "PRECONDITION",
+        "DEFINED_IN",
+        "INTERLOCK_WITH",
+        "CROSS_DOC_DEPENDENCY",
+        "RELATES_TO",
+    }
+)
 
 
 def _validate_identifier(value: str, allowed: frozenset, field: str) -> str:
@@ -55,11 +64,7 @@ def _merge_nodes(tx, nodes: list[dict], source_file: str) -> None:
         props["source_file"] = source_file
         node_id = props["id"]
 
-        cypher = (
-            f"MERGE (n:{label} {{id: $id}}) "
-            "SET n += $props "
-            "RETURN n.id AS id"
-        )
+        cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props RETURN n.id AS id"
         result = tx.run(cypher, id=node_id, props=props)
         record = result.single()
         logger.info("MERGE node  (%s {id: %r})", label, record["id"] if record else node_id)
@@ -94,7 +99,11 @@ def _merge_edges(tx, edges: list[dict], source_file: str) -> None:
         else:
             logger.warning(
                 "Edge skipped — node not found: (%s {id:%r})-[%s]->(%s {id:%r})",
-                from_label, from_id, rel_type, to_label, to_id,
+                from_label,
+                from_id,
+                rel_type,
+                to_label,
+                to_id,
             )
 
 
@@ -109,9 +118,7 @@ def main() -> None:
     logger.info("Loading edges from %s", edges_path)
     edges = _load_json(edges_path)
 
-    logger.info(
-        "Connecting to Neo4j at %s (user=%s)", settings.neo4j_uri, settings.neo4j_username
-    )
+    logger.info("Connecting to Neo4j at %s (user=%s)", settings.neo4j_uri, settings.neo4j_username)
     driver = GraphDatabase.driver(
         settings.neo4j_uri,
         auth=(settings.neo4j_username, settings.neo4j_password),

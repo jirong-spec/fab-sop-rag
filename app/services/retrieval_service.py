@@ -1,7 +1,7 @@
 import logging
 
-from app.services.vector_store import similarity_search
 from app.services.graph_store import graph_expand
+from app.services.vector_store import similarity_search
 from app.utils.text_utils import extract_candidate_tokens
 
 logger = logging.getLogger(__name__)

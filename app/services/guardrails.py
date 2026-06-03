@@ -28,11 +28,11 @@ Guardrail results are always returned (never raise), so the pipeline can
 collect a full trace even when a stage blocks.
 """
 
-import re
 import logging
+import re
 
 from app.schemas import GuardrailResult
-from app.services.judge_service import judge_topic_relevance, judge_grounding
+from app.services.judge_service import judge_grounding, judge_topic_relevance
 
 # SOP entity code pattern: SOP_Etch_001, CheckVacuumPump, TurboVacuumPump, etc.
 # If the question explicitly references a known fab SOP entity, it is unambiguously
@@ -94,9 +94,7 @@ def guard_injection(question: str) -> GuardrailResult:
     """
     for pat in INJECTION_PATTERNS:
         if re.search(pat, question, re.IGNORECASE):
-            logger.warning(
-                "Injection pattern matched: pattern=%r question=%r", pat, question[:80]
-            )
+            logger.warning("Injection pattern matched: pattern=%r question=%r", pat, question[:80])
             return GuardrailResult(
                 stage="input",
                 name="injection_detection",
@@ -161,10 +159,7 @@ def guard_evidence(triples: list[str], min_count: int = 1) -> GuardrailResult:
             stage="retrieval",
             name="evidence_sufficiency",
             passed=False,
-            reason=(
-                f"僅檢索到 {n} 筆 SOP 三元組，最少需要 {min_count} 筆，"
-                "證據不足，拒絕生成以避免幻覺"
-            ),
+            reason=(f"僅檢索到 {n} 筆 SOP 三元組，最少需要 {min_count} 筆，證據不足，拒絕生成以避免幻覺"),
         )
     return GuardrailResult(
         stage="retrieval",

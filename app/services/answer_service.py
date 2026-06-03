@@ -16,7 +16,6 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 
 import logging
 import re
-
 from collections.abc import Iterator
 
 from app.config import settings
@@ -38,7 +37,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm = (sum(x * x for x in a) ** 0.5) * (sum(x * x for x in b) ** 0.5)
     return dot / norm if norm else 0.0
 
@@ -49,15 +48,15 @@ def _score_triples(question: str, triples: list[str]) -> list[tuple[int, str]]:
     Scores are shown as percentages so the LLM can weigh relevance.
     """
     from app.services.vector_store import _get_reranker_embeddings
+
     emb = _get_reranker_embeddings()
     q_vec = emb.embed_query(question)
     t_vecs = emb.embed_documents(triples)
     scored = sorted(
-        [(_cosine(q_vec, tv), t) for tv, t in zip(t_vecs, triples)],
+        [(_cosine(q_vec, tv), t) for tv, t in zip(t_vecs, triples, strict=False)],
         reverse=True,
     )
     return [(round(score * 100), triple) for score, triple in scored]
-
 
 
 _NO_INFO_ANSWER = "此問題的答案不在目前的 SOP 知識圖譜中，無法回答。"
@@ -120,20 +119,24 @@ def _prepare_generation(question: str, triples: list[str]) -> tuple[str, list[st
     logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold)
     model_triples = [triple for _, triple in scored]
 
-    sop_ids = re.findall(r'SOP_\w+', question)
+    sop_ids = re.findall(r"SOP_\w+", question)
     if sop_ids:
         foreign_steps: set[str] = set()
         for t in model_triples:
-            m_step = re.search(r'^\((\w+)[\[\)]', t)
-            m_sop = re.search(r'-\[:DEFINED_IN[^\]]*\]->\((\w+)', t)
-            if m_step and m_sop and m_sop.group(1).startswith('SOP_') and m_sop.group(1) not in sop_ids:
+            m_step = re.search(r"^\((\w+)[\[\)]", t)
+            m_sop = re.search(r"-\[:DEFINED_IN[^\]]*\]->\((\w+)", t)
+            if m_step and m_sop and m_sop.group(1).startswith("SOP_") and m_sop.group(1) not in sop_ids:
                 foreign_steps.add(m_step.group(1))
 
-        foreign_step_pat = re.compile(r'[\(\)](' + '|'.join(re.escape(s) for s in foreign_steps) + r')[\[\)\-]') if foreign_steps else None
+        foreign_step_pat = (
+            re.compile(r"[\(\)](" + "|".join(re.escape(s) for s in foreign_steps) + r")[\[\)\-]")
+            if foreign_steps
+            else None
+        )
 
         def _is_foreign(triple: str) -> bool:
-            m = re.search(r'^\((\w+)[\[\)]', triple)
-            if m and m.group(1).startswith('SOP_') and m.group(1) not in sop_ids:
+            m = re.search(r"^\((\w+)[\[\)]", triple)
+            if m and m.group(1).startswith("SOP_") and m.group(1) not in sop_ids:
                 return True
             return bool(foreign_step_pat and foreign_step_pat.search(triple))
 
@@ -143,13 +146,10 @@ def _prepare_generation(question: str, triples: list[str]) -> tuple[str, list[st
             model_triples = filtered
             scored = [(pct, t) for pct, t in scored if t in set(filtered)]
 
-        if re.search(r'步驟|順序|流程', question):
+        if re.search(r"步驟|順序|流程", question):
             existing = set(model_triples)
             score_lookup = {t: s for s, t in scored_all}
-            supplements = [
-                t for t in triples
-                if 'NEXT_STEP' in t and t not in existing and not _is_foreign(t)
-            ]
+            supplements = [t for t in triples if "NEXT_STEP" in t and t not in existing and not _is_foreign(t)]
             if supplements:
                 logger.debug("NEXT_STEP supplement: +%d triples", len(supplements))
                 for t in supplements:
@@ -179,7 +179,10 @@ def _fit_context_to_budget(question: str, scored: list[tuple[int, str]]) -> list
         if used + cost > budget and kept:
             logger.warning(
                 "Context budget reached: kept %d/%d triples (~%d tokens, budget %d)",
-                len(kept), len(scored), used, budget,
+                len(kept),
+                len(scored),
+                used,
+                budget,
             )
             break
         used += cost
@@ -215,8 +218,10 @@ def generate_answer_stream(question: str, triples: list[str]) -> tuple[Iterator[
             ...stream to client...
     """
     if not triples:
+
         def _empty():
             yield _NO_INFO_ANSWER
+
         return _empty(), []
 
     try:
@@ -224,6 +229,8 @@ def generate_answer_stream(question: str, triples: list[str]) -> tuple[Iterator[
         return chat_completion_stream(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
     except Exception as exc:
         logger.error("Answer stream preparation failed: %s", exc)
+
         def _error():
             yield _LLM_ERROR_ANSWER
+
         return _error(), []

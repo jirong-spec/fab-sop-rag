@@ -192,8 +192,10 @@ if prompt:
             render_response(final_data, elapsed_ms)
 
     if final_data:
-        st.session_state.messages.append({
-            "role": "assistant",
-            "data": final_data,
-            "elapsed_ms": elapsed_ms,
-        })
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "data": final_data,
+                "elapsed_ms": elapsed_ms,
+            }
+        )

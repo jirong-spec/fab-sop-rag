@@ -38,7 +38,8 @@ SHARED_EQUIPMENT = {
 # preconditions[(equip,status,cond_id)], interlock?(a,b,id,trigger,action), crossdoc[(target,reason)].
 SOPS = [
     {
-        "id": "SOP_CVD_010", "title": "CVD 薄膜沉積異常處置程序",
+        "id": "SOP_CVD_010",
+        "title": "CVD 薄膜沉積異常處置程序",
         "anomaly": ("FilmThicknessDrift", "CVD 薄膜厚度漂移超出規格範圍"),
         "equipment": [{"id": "CVDChamber", "type": "ProcessChamber", "desc": "化學氣相沉積腔體"}],
         "steps": [
@@ -48,17 +49,22 @@ SOPS = [
             {"id": "AdjustDepositionRate", "desc": "調整沉積速率"},
             {"id": "VerifyFilmUniformity", "desc": "驗證薄膜均勻性"},
         ],
-        "preconditions": [("TurboVacuumPump", "RUNNING", "PRECONDITION-CVD01"),
-                          ("RFPowerSupply", "STANDBY_OR_OFF", "PRECONDITION-CVD02")],
+        "preconditions": [
+            ("TurboVacuumPump", "RUNNING", "PRECONDITION-CVD01"),
+            ("RFPowerSupply", "STANDBY_OR_OFF", "PRECONDITION-CVD02"),
+        ],
         "interlock": ("CVDChamber", "GasDeliverySystem", "IL-C010", "chamber_pressure > 5 Torr", "close gas inlet"),
         "crossdoc": [("SOP_Pump_002", "TurboVacuumPump 狀態定義（RUNNING/FAULT）源自 SOP_Pump_002")],
     },
     {
-        "id": "SOP_CMP_020", "title": "CMP 平坦化研磨異常處置程序",
+        "id": "SOP_CMP_020",
+        "title": "CMP 平坦化研磨異常處置程序",
         "anomaly": ("PlanarityDeviation", "CMP 研磨後平坦度偏離規格"),
-        "equipment": [{"id": "CMPPolisher", "type": "Polisher", "desc": "化學機械研磨機台"},
-                      {"id": "SlurrySupply", "type": "ChemicalSupply", "desc": "研磨液供應系統"},
-                      {"id": "EndpointDetector", "type": "Sensor", "desc": "研磨終點偵測器"}],
+        "equipment": [
+            {"id": "CMPPolisher", "type": "Polisher", "desc": "化學機械研磨機台"},
+            {"id": "SlurrySupply", "type": "ChemicalSupply", "desc": "研磨液供應系統"},
+            {"id": "EndpointDetector", "type": "Sensor", "desc": "研磨終點偵測器"},
+        ],
         "steps": [
             {"id": "ReadPolishRecipe", "desc": "讀取研磨配方"},
             {"id": "CheckSlurryFlow", "desc": "檢查研磨液流量", "requires": ("SlurrySupply", "READY")},
@@ -70,11 +76,14 @@ SOPS = [
         "crossdoc": [("SOP_Clean_060", "研磨後須銜接 SOP_Clean_060 濕式清洗去除殘留研磨液")],
     },
     {
-        "id": "SOP_Implant_030", "title": "離子佈植劑量異常處置程序",
+        "id": "SOP_Implant_030",
+        "title": "離子佈植劑量異常處置程序",
         "anomaly": ("DoseUniformityError", "離子佈植劑量均勻度誤差超標"),
-        "equipment": [{"id": "IonSource", "type": "Source", "desc": "離子源"},
-                      {"id": "BeamlineScanner", "type": "Scanner", "desc": "束流掃描器"},
-                      {"id": "FaradayCup", "type": "Sensor", "desc": "法拉第杯劑量偵測器"}],
+        "equipment": [
+            {"id": "IonSource", "type": "Source", "desc": "離子源"},
+            {"id": "BeamlineScanner", "type": "Scanner", "desc": "束流掃描器"},
+            {"id": "FaradayCup", "type": "Sensor", "desc": "法拉第杯劑量偵測器"},
+        ],
         "steps": [
             {"id": "VerifyBeamCurrent", "desc": "驗證束流電流", "requires": ("FaradayCup", "CALIBRATED")},
             {"id": "CheckScanUniformity", "desc": "檢查掃描均勻度"},
@@ -84,11 +93,14 @@ SOPS = [
         "preconditions": [("RFPowerSupply", "OFF", "PRECONDITION-IMP01")],
     },
     {
-        "id": "SOP_Litho_040", "title": "微影疊對誤差處置程序",
+        "id": "SOP_Litho_040",
+        "title": "微影疊對誤差處置程序",
         "anomaly": ("OverlayError", "微影層間疊對誤差超出規格"),
-        "equipment": [{"id": "Stepper", "type": "Scanner", "desc": "步進曝光機"},
-                      {"id": "PhotoresistTrack", "type": "Track", "desc": "光阻塗佈顯影軌道"},
-                      {"id": "AlignmentSensor", "type": "Sensor", "desc": "對準感測器"}],
+        "equipment": [
+            {"id": "Stepper", "type": "Scanner", "desc": "步進曝光機"},
+            {"id": "PhotoresistTrack", "type": "Track", "desc": "光阻塗佈顯影軌道"},
+            {"id": "AlignmentSensor", "type": "Sensor", "desc": "對準感測器"},
+        ],
         "steps": [
             {"id": "CheckAlignmentMarks", "desc": "檢查對準標記", "requires": ("AlignmentSensor", "READY")},
             {"id": "MeasureOverlay", "desc": "量測疊對誤差"},
@@ -98,10 +110,13 @@ SOPS = [
         "preconditions": [("PhotoresistTrack", "READY", "PRECONDITION-LIT01")],
     },
     {
-        "id": "SOP_Anneal_050", "title": "快速熱退火溫度異常處置程序",
+        "id": "SOP_Anneal_050",
+        "title": "快速熱退火溫度異常處置程序",
         "anomaly": ("ThermalNonUniformity", "退火爐溫度均勻度異常"),
-        "equipment": [{"id": "RTAChamber", "type": "ProcessChamber", "desc": "快速熱退火腔體"},
-                      {"id": "TempController", "type": "Controller", "desc": "溫度控制器"}],
+        "equipment": [
+            {"id": "RTAChamber", "type": "ProcessChamber", "desc": "快速熱退火腔體"},
+            {"id": "TempController", "type": "Controller", "desc": "溫度控制器"},
+        ],
         "steps": [
             {"id": "CheckPurgeFlow", "desc": "確認吹淨氣體流量", "requires": ("N2PurgeSystem", "READY")},
             {"id": "RampTemperature", "desc": "升溫"},
@@ -113,10 +128,13 @@ SOPS = [
         "crossdoc": [("SOP_Vent_003", "退火後腔體洩壓須依 SOP_Vent_003 程序執行")],
     },
     {
-        "id": "SOP_Clean_060", "title": "濕式清洗粒子污染處置程序",
+        "id": "SOP_Clean_060",
+        "title": "濕式清洗粒子污染處置程序",
         "anomaly": ("ParticleContamination", "濕式清洗後粒子污染超標"),
-        "equipment": [{"id": "WetBench", "type": "WetStation", "desc": "濕式清洗槽"},
-                      {"id": "ChemicalSupply", "type": "ChemicalSupply", "desc": "清洗化學品供應系統"}],
+        "equipment": [
+            {"id": "WetBench", "type": "WetStation", "desc": "濕式清洗槽"},
+            {"id": "ChemicalSupply", "type": "ChemicalSupply", "desc": "清洗化學品供應系統"},
+        ],
         "steps": [
             {"id": "PrepareChemicalBath", "desc": "配置清洗藥液", "requires": ("ChemicalSupply", "READY")},
             {"id": "ImmerseWafer", "desc": "晶圓浸泡"},
@@ -127,10 +145,13 @@ SOPS = [
         "preconditions": [("ChemicalSupply", "READY", "PRECONDITION-CLN01")],
     },
     {
-        "id": "SOP_Metro_070", "title": "關鍵尺寸量測漂移處置程序",
+        "id": "SOP_Metro_070",
+        "title": "關鍵尺寸量測漂移處置程序",
         "anomaly": ("MeasurementDrift", "CD-SEM 關鍵尺寸量測漂移"),
-        "equipment": [{"id": "CDSEM", "type": "Metrology", "desc": "關鍵尺寸掃描電鏡"},
-                      {"id": "OverlayMetrology", "type": "Metrology", "desc": "疊對量測機"}],
+        "equipment": [
+            {"id": "CDSEM", "type": "Metrology", "desc": "關鍵尺寸掃描電鏡"},
+            {"id": "OverlayMetrology", "type": "Metrology", "desc": "疊對量測機"},
+        ],
         "steps": [
             {"id": "CalibrateCDSEM", "desc": "校正 CD-SEM", "requires": ("CDSEM", "CALIBRATED")},
             {"id": "MeasureCriticalDimension", "desc": "量測關鍵尺寸"},
@@ -150,7 +171,9 @@ def build():
         nodes.append({"label": label, "properties": props})
 
     def edge(t, fl, fi, tl, ti, props=None):
-        edges.append({"type": t, "from_label": fl, "from_id": fi, "to_label": tl, "to_id": ti, "properties": props or {}})
+        edges.append(
+            {"type": t, "from_label": fl, "from_id": fi, "to_label": tl, "to_id": ti, "properties": props or {}}
+        )
 
     for eid, desc in SHARED_EQUIPMENT.items():
         node("Equipment", {"id": eid, "type": "SharedUtility", "description": desc})
@@ -172,10 +195,22 @@ def build():
                 edge("FIRST_STEP", "SOPDocument", sid, "SOPStep", st["id"])
             else:
                 prev = steps[i - 1]["id"]
-                edge("NEXT_STEP", "SOPStep", prev, "SOPStep", st["id"],
-                     {"description": f"{prev} 完成後，下一步執行 {st['id']}"})
-                edge("DEPENDS_ON", "SOPStep", st["id"], "SOPStep", prev,
-                     {"description": f"{st['id']} 執行前必須先完成前置依賴步驟 {prev}"})
+                edge(
+                    "NEXT_STEP",
+                    "SOPStep",
+                    prev,
+                    "SOPStep",
+                    st["id"],
+                    {"description": f"{prev} 完成後，下一步執行 {st['id']}"},
+                )
+                edge(
+                    "DEPENDS_ON",
+                    "SOPStep",
+                    st["id"],
+                    "SOPStep",
+                    prev,
+                    {"description": f"{st['id']} 執行前必須先完成前置依賴步驟 {prev}"},
+                )
             if "requires" in st:
                 eq, status = st["requires"]
                 edge("REQUIRES_STATUS", "SOPStep", st["id"], "Equipment", eq, {"required_status": status})
@@ -184,7 +219,9 @@ def build():
             edge("PRECONDITION", "SOPDocument", sid, "Equipment", eq, {"required_status": status, "condition_id": cid})
         if "interlock" in s:
             a, b, ilid, trig, act = s["interlock"]
-            edge("INTERLOCK_WITH", "Equipment", a, "Equipment", b, {"interlock_id": ilid, "trigger": trig, "action": act})
+            edge(
+                "INTERLOCK_WITH", "Equipment", a, "Equipment", b, {"interlock_id": ilid, "trigger": trig, "action": act}
+            )
         for target, reason in s.get("crossdoc", []):
             edge("CROSS_DOC_DEPENDENCY", "SOPDocument", sid, "SOPDocument", target, {"reason": reason})
 
@@ -194,7 +231,7 @@ def build():
 def markdown(s):
     L = [f"# {s['id']}：{s['title']}", "", "> 合成範例資料，僅供測試/教學，非真實機台程序。", ""]
     aid, adesc = s["anomaly"]
-    L += [f"## 觸發異常", f"- **{aid}**：{adesc}（觸發本 SOP {s['id']}）", ""]
+    L += ["## 觸發異常", f"- **{aid}**：{adesc}（觸發本 SOP {s['id']}）", ""]
     if s.get("preconditions"):
         L += ["## 前置條件（PRECONDITION）"]
         for eq, status, cid in s["preconditions"]:
@@ -225,7 +262,9 @@ def merge_into(path, items, key):
     for it in items:
         k = key(it)
         if k not in seen:
-            existing.append(it); seen.add(k); added += 1
+            existing.append(it)
+            seen.add(k)
+            added += 1
     path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
     return added, len(existing)
 

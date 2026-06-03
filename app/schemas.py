@@ -1,10 +1,11 @@
-from typing import Any, Literal, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 
-
 # ── Request / Response for POST /v1/ask ──────────────────────────────────────
+
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000, description="使用者提問")
@@ -59,10 +60,11 @@ class AskResponse(BaseModel):
     )
     confidence: float = Field(..., ge=0.0, le=1.0)
     request_id: str = Field("-", description="X-Request-ID correlation token")
-    debug: Optional[DebugInfo] = None
+    debug: DebugInfo | None = None
 
 
 # ── POST /v1/ingest ───────────────────────────────────────────────────────────
+
 
 class IngestRequest(BaseModel):
     source_file: str = Field(..., min_length=1, max_length=200, description="來源檔案名稱，用於 graph versioning")
@@ -75,15 +77,16 @@ class IngestResponse(BaseModel):
     nodes_merged: int = Field(..., description="成功 MERGE 的節點數")
     edges_merged: int = Field(..., description="成功 MERGE 的邊數")
     edges_skipped: int = Field(..., description="因節點不存在而跳過的邊數")
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 # ── GET /v1/health ────────────────────────────────────────────────────────────
 
+
 class ServiceStatus(BaseModel):
     status: Literal["ok", "degraded", "down"]
-    latency_ms: Optional[int] = None
-    detail: Optional[str] = None
+    latency_ms: int | None = None
+    detail: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -94,6 +97,7 @@ class HealthResponse(BaseModel):
 
 
 # ── Standardised error envelope ───────────────────────────────────────────────
+
 
 class ErrorResponse(BaseModel):
     """

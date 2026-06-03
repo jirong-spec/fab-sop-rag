@@ -7,9 +7,10 @@ Request ID middleware.
 - Echoes the ID back in the X-Request-ID response header.
 """
 
+import logging
 import re
 import uuid
-import logging
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp

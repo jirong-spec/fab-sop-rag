@@ -1,0 +1,22 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle, I = import sort, UP = pyupgrade, B = bugbear
+select = ["E", "F", "I", "UP", "B"]
+# E501 (line length) is owned by `ruff format`, which won't split long strings/comments.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# ingestion/eval scripts intentionally insert the repo root on sys.path before
+# importing the `app` package, which trips E402 (import-not-at-top).
+"scripts/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

@@ -28,13 +28,15 @@ import json
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 QUERY_TIMEOUT_SEC = 120
 
 try:
     import mlflow
+
     _MLFLOW_AVAILABLE = True
 except ImportError:
     _MLFLOW_AVAILABLE = False
@@ -48,6 +50,7 @@ MULTIHOP_IDS = {"q02", "q05", "q07"}
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
+
 def score_response(resp: dict, expected: dict) -> dict:
     behavior = expected.get("expected_behavior", "retrieved_and_answered")
     keywords = expected.get("expected_keywords", [])
@@ -55,8 +58,10 @@ def score_response(resp: dict, expected: dict) -> dict:
     if behavior == "blocked_by_topic_guard":
         return {
             "correct_block": resp.get("status") == "blocked",
-            "keyword_hits": 0, "keyword_total": 0,
-            "retrieval_hits": 0, "retrieval_total": 0,
+            "keyword_hits": 0,
+            "keyword_total": 0,
+            "retrieval_hits": 0,
+            "retrieval_total": 0,
             "is_block_query": True,
         }
 
@@ -67,13 +72,16 @@ def score_response(resp: dict, expected: dict) -> dict:
     hits = sum(1 for kw in keywords if kw.lower() in haystack.lower())
     return {
         "correct_block": None,
-        "keyword_hits": hits, "keyword_total": len(keywords),
-        "retrieval_hits": retrieval_hits, "retrieval_total": len(keywords),
+        "keyword_hits": hits,
+        "keyword_total": len(keywords),
+        "retrieval_hits": retrieval_hits,
+        "retrieval_total": len(keywords),
         "is_block_query": False,
     }
 
 
 # ── Live runner ───────────────────────────────────────────────────────────────
+
 
 def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
     from app.schemas import AskRequest
@@ -82,13 +90,16 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
 
     print("[INFO] Pre-warming services...")
     try:
-        from app.services.vector_store import _get_vector_store, _get_embeddings, _get_reranker_embeddings
+        from app.services.vector_store import _get_embeddings, _get_reranker_embeddings, _get_vector_store
+
         _get_embeddings().embed_query("warmup")
         _get_reranker_embeddings().embed_query("warmup")
         _get_vector_store()
         from app.services.graph_store import _get_driver
+
         _get_driver()
         from app.services.llm_client import chat_completion
+
         chat_completion("ping", max_tokens=1)
         print("[INFO] Pre-warm complete")
     except Exception as e:
@@ -120,24 +131,35 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
             try:
                 gr, g_ms = g_fut.result(timeout=QUERY_TIMEOUT_SEC)
                 graph_entry = {
-                    "status": gr.status, "reasoning_type": gr.reasoning_type,
-                    "latency_ms": g_ms, "answer": gr.answer,
+                    "status": gr.status,
+                    "reasoning_type": gr.reasoning_type,
+                    "latency_ms": g_ms,
+                    "answer": gr.answer,
                     "evidence_triples": gr.evidence_triples,
-                    "model_triples": gr.model_triples, "entities": gr.entities,
+                    "model_triples": gr.model_triples,
+                    "entities": gr.entities,
                 }
             except FuturesTimeoutError:
                 print(f"[WARNING] Graph RAG timed out: {qid}")
                 graph_entry = {
-                    "status": "error", "reasoning_type": "timeout",
-                    "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
-                    "evidence_triples": [], "model_triples": [], "entities": [],
+                    "status": "error",
+                    "reasoning_type": "timeout",
+                    "latency_ms": QUERY_TIMEOUT_SEC * 1000,
+                    "answer": "[TIMEOUT]",
+                    "evidence_triples": [],
+                    "model_triples": [],
+                    "entities": [],
                 }
             except Exception as exc:
                 print(f"[WARNING] Graph RAG error on {qid}: {exc}")
                 graph_entry = {
-                    "status": "error", "reasoning_type": "error",
-                    "latency_ms": 0, "answer": f"[ERROR] {exc}",
-                    "evidence_triples": [], "model_triples": [], "entities": [],
+                    "status": "error",
+                    "reasoning_type": "error",
+                    "latency_ms": 0,
+                    "answer": f"[ERROR] {exc}",
+                    "evidence_triples": [],
+                    "model_triples": [],
+                    "entities": [],
                 }
 
             # ── Vector RAG ─────────────────────────────────────────────────
@@ -146,8 +168,10 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
                 try:
                     vr, sl, v_ms = v_fut.result(timeout=QUERY_TIMEOUT_SEC)
                     vector_entry = {
-                        "status": vr.status, "reasoning_type": vr.reasoning_type,
-                        "latency_ms": v_ms, "answer": vr.answer,
+                        "status": vr.status,
+                        "reasoning_type": vr.reasoning_type,
+                        "latency_ms": v_ms,
+                        "answer": vr.answer,
                         "model_triples": vr.model_triples,
                         "evidence_triples": vr.evidence_triples,
                         "stage_latencies": sl,
@@ -155,16 +179,24 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
                 except FuturesTimeoutError:
                     print(f"[WARNING] Vector RAG timed out: {qid}")
                     vector_entry = {
-                        "status": "error", "reasoning_type": "timeout",
-                        "latency_ms": QUERY_TIMEOUT_SEC * 1000, "answer": "[TIMEOUT]",
-                        "model_triples": [], "evidence_triples": [], "stage_latencies": {},
+                        "status": "error",
+                        "reasoning_type": "timeout",
+                        "latency_ms": QUERY_TIMEOUT_SEC * 1000,
+                        "answer": "[TIMEOUT]",
+                        "model_triples": [],
+                        "evidence_triples": [],
+                        "stage_latencies": {},
                     }
                 except Exception as exc:
                     print(f"[WARNING] Vector RAG error on {qid}: {exc}")
                     vector_entry = {
-                        "status": "error", "reasoning_type": "error",
-                        "latency_ms": 0, "answer": f"[ERROR] {exc}",
-                        "model_triples": [], "evidence_triples": [], "stage_latencies": {},
+                        "status": "error",
+                        "reasoning_type": "error",
+                        "latency_ms": 0,
+                        "answer": f"[ERROR] {exc}",
+                        "model_triples": [],
+                        "evidence_triples": [],
+                        "stage_latencies": {},
                     }
 
             results.append({"id": qid, "graph": graph_entry, "vector": vector_entry})
@@ -172,6 +204,7 @@ def _run_live(queries: list[dict], run_vector: bool = True) -> list[dict]:
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
+
 
 def render_report(queries: list[dict], results: dict) -> str:
     has_vector = any(results.get(q["id"], {}).get("vector") is not None for q in queries)
@@ -211,17 +244,21 @@ def render_report(queries: list[dict], results: dict) -> str:
         else:
             gh, gt = g_score["keyword_hits"], g_score["keyword_total"]
             grh = g_score["retrieval_hits"]
-            g_kw_hits += gh; g_kw_total += gt
-            g_ret_hits += grh; g_ret_total += gt
+            g_kw_hits += gh
+            g_kw_total += gt
+            g_ret_hits += grh
+            g_ret_total += gt
             if qid in MULTIHOP_IDS:
-                mh_hits += gh; mh_total += gt
+                mh_hits += gh
+                mh_total += gt
             r = "R✅" if grh == gt else ("R⚠" if grh > 0 else "R❌")
             ga = "A✅" if gh == gt else ("A⚠" if gh > 0 else "A❌")
             g_col = f"{r} {ga} {gh}/{gt}  {g_ms:>5}ms"
 
             if v_score and v_resp:
                 vh, vt = v_score["keyword_hits"], v_score["keyword_total"]
-                v_kw_hits += vh; v_kw_total += vt
+                v_kw_hits += vh
+                v_kw_total += vt
                 va = "A✅" if vh == vt else ("A⚠" if vh > 0 else "A❌")
                 delta = g_ms - v_ms
                 sign = "+" if delta > 0 else ""
@@ -243,9 +280,11 @@ def render_report(queries: list[dict], results: dict) -> str:
     hdr_g = f"{'Graph RAG  R/A  Latency':^28}"
     hdr_v = f"{'Vector RAG  A  Latency  Δ':^32}" if has_vector else ""
     lines = [
-        "", "=" * 60,
+        "",
+        "=" * 60,
         "  Fab SOP RAG — Graph RAG vs Vector RAG Comparison",
-        "=" * 60, "",
+        "=" * 60,
+        "",
         sep,
         f"  {'ID':<4} │ {'Category':<35} │ {hdr_g} │ {hdr_v}",
         sep,
@@ -258,14 +297,17 @@ def render_report(queries: list[dict], results: dict) -> str:
             f"  Vector RAG │ A:{v_kw_hits}/{v_kw_total}({v_kw_pct:.0f}%)  avg {v_avg}ms  │  Graph overhead: Δ{'+' if delta_avg >= 0 else ''}{delta_avg}ms"
         )
     lines += [
-        sep, "",
+        sep,
+        "",
         f"  Multi-hop (q02/q05/q07): {mh_hits}/{mh_total} ({mh_pct:.1f}%)  [Graph RAG]",
-        "", "=" * 60,
+        "",
+        "=" * 60,
     ]
     return "\n".join(lines)
 
 
 # ── MLflow ────────────────────────────────────────────────────────────────────
+
 
 def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> None:
     mlflow.set_tracking_uri(tracking_uri)
@@ -274,6 +316,7 @@ def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> Non
     params = {"reranker": "bi-encoder-cosine", "cap_strategy": "dynamic_top50pct", "cot_method": "implicit"}
     try:
         from app.services.answer_service import _PROMPT_TEMPLATE
+
         params["cot_method"] = "implicit" if "心中逐一核對" in _PROMPT_TEMPLATE else "none"
     except Exception:
         pass
@@ -288,8 +331,10 @@ def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> Non
         ms = resp.get("latency_ms", 0)
         latencies.append(ms)
         if not score["is_block_query"]:
-            kw_hits += score["keyword_hits"]; kw_total += score["keyword_total"]
-            ret_hits += score["retrieval_hits"]; ret_total += score["retrieval_total"]
+            kw_hits += score["keyword_hits"]
+            kw_total += score["keyword_total"]
+            ret_hits += score["retrieval_hits"]
+            ret_total += score["retrieval_total"]
             per_q[f"{qid}_answer"] = score["keyword_hits"] / score["keyword_total"] if score["keyword_total"] else 0
             per_q[f"{qid}_latency_ms"] = ms
 
@@ -304,6 +349,7 @@ def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> Non
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
         import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             json.dump({"queries": queries, "results": results}, f, ensure_ascii=False, indent=2)
             tmp = f.name
@@ -314,6 +360,7 @@ def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> Non
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -334,7 +381,9 @@ def main() -> None:
     if args.output:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"queries": queries, "results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+        out.write_text(
+            json.dumps({"queries": queries, "results": results}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         print(f"[INFO] Saved to {out}")
 
 
