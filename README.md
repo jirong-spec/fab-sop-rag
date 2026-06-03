@@ -1,5 +1,9 @@
 # Fab SOP Knowledge Query API
 
+[![CI](https://github.com/jirong-spec/fab-sop-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/jirong-spec/fab-sop-rag/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
+
 > **Guardrailed Hybrid Graph RAG — 單機企業級 MVP**
 > 用自然語言查詢晶圓廠 SOP 文件：系統從知識圖譜（Neo4j）與向量庫（Qdrant）撈出 SOP 步驟、設備依賴與前置條件，由本地 LLM（vLLM）合成答案，全程經過四道 guardrail 過濾。
 
@@ -371,3 +375,17 @@ docker compose down            # 停止（資料保留）
 docker compose down -v         # 完全清除（含 volumes）
 docker compose up --build -d   # 重新啟動
 ```
+
+### 開發 / 測試
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q          # 純函式單元測試（不需 Docker）
+ruff check . && ruff format --check .
+```
+
+---
+
+## 授權
+
+MIT — 見 [LICENSE](LICENSE)。所有 SOP 與圖譜資料皆為合成範例，僅供教學/測試。

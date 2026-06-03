@@ -1,0 +1,15 @@
+# Test / CI environment.
+#
+# Tooling + the LIGHT runtime deps that the unit tests actually import. The unit
+# tests cover pure functions only, so they do NOT need the heavy ML stack
+# (torch / sentence-transformers / langchain / qdrant-client) that lives in
+# requirements.txt and is only required to run the live service.
+pytest>=8.0,<9.0
+ruff>=0.6,<1.0
+mypy>=1.11,<2.0
+
+pydantic>=2.9.0,<3.0
+pydantic-settings>=2.3.0,<3.0
+openai>=1.40.0,<2.0
+neo4j>=5.23.0,<6.0
+tenacity>=8.2,<10.0
