@@ -371,7 +371,7 @@
           <div class="label">Retrieval Rate · Graph RAG</div>
         </div>
         <div class="card orange">
-          <div class="value">54.2%</div>
+          <div class="value">62.5%</div>
           <div class="label">Answer Rate · Vector RAG</div>
         </div>
         <div class="card blue">
@@ -635,8 +635,8 @@
         </div>
         <div class="bar-wrap">
           <span class="bar-label">Vector RAG</span>
-          <div class="bar-outer"><div class="bar-inner bar-vector" style="width:54%">13/24</div></div>
-          <span class="bar-pct fail">54.2%</span>
+          <div class="bar-outer"><div class="bar-inner bar-vector" style="width:62%">15/24</div></div>
+          <span class="bar-pct fail">62.5%</span>
         </div>
       </div>
 
@@ -669,7 +669,7 @@
               <td>sop_step_sequence ↑HOP</td>
               <td><span class="pass">R✅ A✅ 4/4</span></td>
               <td class="mono">4515 ms</td>
-              <td><span class="fail">A❌ 0/4</span></td>
+              <td><span class="warn">A⚠ 1/4</span></td>
               <td class="mono">4385 ms</td>
               <td class="mono warn">+130 ms</td>
             </tr>
@@ -705,7 +705,7 @@
               <td>interlock_condition</td>
               <td><span class="pass">R✅ A✅ 3/3</span></td>
               <td class="mono">6668 ms</td>
-              <td><span class="warn">A⚠ 1/3</span></td>
+              <td><span class="warn">A⚠ 2/3</span></td>
               <td class="mono">4144 ms</td>
               <td class="mono warn">+2524 ms</td>
             </tr>
@@ -749,13 +749,47 @@
               <td colspan="2" style="font-weight:700;color:#e2e8f0;">總計</td>
               <td style="color:#4ade80;font-weight:700;">R:24/24 (100%) · A:24/24 (100%)</td>
               <td class="mono" style="color:#93c5fd;">avg 3946 ms</td>
-              <td style="color:#f87171;font-weight:700;">A:13/24 (54.2%)</td>
+              <td style="color:#f87171;font-weight:700;">A:15/24 (62.5%)</td>
               <td class="mono" style="color:#93c5fd;">avg 3695 ms</td>
               <td class="mono" style="color:#fbbf24;">+251 ms</td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <p style="margin-top:6px;color:#94a3b8;font-size:.9em;">
+        ⚠ 上表為 <strong>keyword 子字串比對</strong>、且調參與評測為同一批題（dev=test），會高估泛化。以下為更嚴謹的評估。
+      </p>
+
+      <h3 style="margin-top:24px;">嚴謹評估：held-out test + LLM-judge + 負例</h3>
+      <p>27 題、dev/test 切分（test 的 15/18 條 gold 邊從未被調參看過）、retrieval recall@k、LLM-as-judge 對「圖譜推導出的標準答案」評分、拒答/離題/注入負例、每題 3 次取 mean±std。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指標</th><th>DEV（調過參）</th><th>TEST（held-out）</th></tr></thead>
+          <tbody>
+            <tr><td>Answer keyword-match</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
+            <tr><td>Retrieval recall@k（model triples）</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
+            <tr><td>Answer correctness（LLM-judge）</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
+            <tr><td>負例：拒答 / 離題 / 注入</td><td class="mono" colspan="2" style="text-align:center;">100% / 100% / 100%（±0.0，temp=0 可重現）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:#94a3b8;font-size:.9em;">但 3 SOP / 48 邊太小，2-hop 幾乎撈回整張圖，retrieval 根本沒被壓測（evidence recall 必然 100%）→ 需要更大、有干擾的圖。</p>
+
+      <h3 style="margin-top:24px;">Scale 壓力測試：10-SOP 合成圖（找出並修掉 2 個 scaling bug）</h3>
+      <p><code>scripts/gen_synthetic_sops.py</code> 確定性生成 10 SOP / 93 節點 / 168 邊，刻意讓 <code>RFPowerSupply</code>、<code>N2PurgeSystem</code>、<code>TurboVacuumPump</code> 被多份 SOP 共用成 <strong>hub</strong>，製造「狀態不同的競爭邊」。暴露兩個小圖藏住的 bug：<strong>(1)</strong> dense 子圖回傳 ~100 條 triple，prompt 撐爆 4096 context → HTTP 400、整題生成失敗；<strong>(2)</strong> <code>REQUIRES_STATUS / PRECONDITION / INTERLOCK</code> 邊只有 CamelCase ID，對中文問題相似度低 → 被 rerank cap 砍掉。修法：<strong>(#1)</strong> 依 token 預算裁切 prompt；<strong>(#2)</strong> 為缺 <code>description</code> 的邊型合成中文 gloss。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指標（10-SOP TEST · held-out）</th><th>修前</th><th>修後</th></tr></thead>
+          <tbody>
+            <tr><td>Answer keyword-match</td><td class="mono fail">84.3%</td><td class="mono pass">96.2%</td></tr>
+            <tr><td>Retrieval recall@k（model）</td><td class="mono warn">88.5%</td><td class="mono pass">96.2%</td></tr>
+            <tr><td>Answer correctness（LLM-judge）</td><td class="mono fail">84.6%</td><td class="mono pass">98.1%</td></tr>
+            <tr><td><code>step_requires_status</code> recall</td><td class="mono fail">50%</td><td class="mono pass">100%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:#94a3b8;font-size:.9em;">修後 recall_model == recall_evidence（96.2%）→ rerank/cap 不再丟掉已撈到的 gold；殘留 ~4% 來自 entity 抽取 / 2-hop 覆蓋。Production 維持 3-SOP，大圖為 opt-in fixture（跑完 <code>git checkout</code> 還原）。LLM-judge 與生成同一個 vLLM，有 self-grading bias。</p>
     </section>
 
     <!-- ── 5. 延遲分析 ── -->
@@ -847,6 +881,26 @@
               <td>pre-warm 只載入 <code>_get_embeddings()</code>，<code>_get_reranker_embeddings()</code> 仍為冷啟動；僅載入模型物件不觸發 GPU kernel 初始化，需實際呼叫 <code>embed_query()</code></td>
               <td>lifespan 與 eval pre-warm 均改為對兩個 embedding model 呼叫 <code>.embed_query("warmup")</code></td>
             </tr>
+            <tr>
+              <td>向量庫 Chroma → Qdrant</td>
+              <td>原 in-process Chroma（<code>persist_directory</code>）不利並發/擴展；改用獨立向量 server</td>
+              <td>讀寫統一 LangChain <code>QdrantVectorStore</code>（payload schema 一致）；ingest <code>force_recreate</code> 避免刪檔後殘留孤兒向量。Graph RAG 不變，Vector baseline 54%→62%</td>
+            </tr>
+            <tr>
+              <td>圖遍歷 <code>LIMIT 200</code> 截斷（大圖漏邊）</td>
+              <td><code>RETURN p LIMIT 200</code> 限制的是「路徑數」，2-hop 路徑爆炸會在撈到關鍵邊前就截斷</td>
+              <td>改 <strong>distinct-edge</strong> 遍歷（收 hop 內不重複邊，LIMIT 500）；實測 vs undirected 準確率打平且消除截斷，有向（directed）反而退步 → 已否決</td>
+            </tr>
+            <tr>
+              <td>大圖 prompt 撐爆 context（HTTP 400）</td>
+              <td>動態 cap 只限 triple 數（max 100），dense 子圖序列化後超過 4096 token，生成整題失敗</td>
+              <td><strong>token-aware 裁切</strong>：依 <code>llm_max_model_len − 完成 − margin</code> 預算保留高分 triple，prompt 絕不溢出 context</td>
+            </tr>
+            <tr>
+              <td>低相似度邊被 rerank 砍掉（recall 掉）</td>
+              <td>REQUIRES_STATUS / PRECONDITION / INTERLOCK 邊只有 CamelCase ID，對中文問題 embedding 相似度趨近零</td>
+              <td>為缺 <code>description</code> 的邊型合成<strong>中文 gloss</strong>（比照 NEXT_STEP/DEPENDS_ON enrichment）；10-SOP <code>step_requires_status</code> recall 50%→100%</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -884,7 +938,7 @@
         <div class="conclusion-grid">
           <div class="conc-card">
             <span class="conc-num">100%</span>
-            準確率從 50% 提升至 100%。差距集中於步驟順序、Interlock 條件、multi-hop 跨文件查詢等需要圖結構推理的問題。
+            Graph RAG keyword 100%、嚴謹 held-out 評估亦 100%、10-SOP 壓測 96%；Vector RAG 僅 62.5%。差距集中於步驟順序、Interlock 條件、multi-hop 跨文件查詢等需要圖結構推理的問題。
           </div>
           <div class="conc-card">
             <span class="conc-num">+251ms</span>
