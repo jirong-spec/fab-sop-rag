@@ -91,12 +91,11 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     Returns a deduplicated, insertion-ordered list of triples:
         (StartNode)-[:REL_TYPE]->(EndNode)
 
-    Traversal mode is settings.graph_traversal_mode (default "distinct"):
-      "distinct"   — distinct relationships within `hop` hops (no path explosion);
-      "undirected" — both-direction variable-length paths, LIMIT 200;
-      "directed"   — outgoing-only paths, LIMIT 200.
-    Every triple string reflects the stored edge direction regardless of mode
-    (see _rel_to_triple); duplicates are removed by the `seen` set below.
+    Collects the DISTINCT relationships reachable within `hop` hops of any seed,
+    rather than enumerating variable-length paths (which explodes and gets
+    truncated on a connected graph). Each triple string reflects the stored edge
+    direction regardless of how it was matched (see _rel_to_triple); duplicates
+    are removed by the `seen` set below.
     """
     if not entities:
         return []
@@ -105,38 +104,14 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     # hop is validated as int (1-4) by AskRequest; explicit cast prevents any
     # future code path from accidentally passing a string here.
     hop = int(hop)
-    mode = settings.graph_traversal_mode
-
-    if mode == "distinct":
-        # Collect distinct relationships within `hop` hops of any seed.
-        # Avoids the path-count explosion of variable-length paths, so the
-        # LIMIT is effectively never hit on a small graph.
-        query = f"""
-        MATCH (n)-[r*1..{hop}]-(m)
-        WHERE n.id IN $ents
-        UNWIND r AS rel
-        WITH DISTINCT rel
-        RETURN startNode(rel) AS s, rel AS r, endNode(rel) AS e
-        LIMIT 500
-        """
-        limit = 500
-    elif mode == "directed":
-        query = f"""
-        MATCH p=(n)-[*1..{hop}]->(m)
-        WHERE n.id IN $ents
-        RETURN p LIMIT 200
-        """
-        limit = 200
-    else:  # "undirected"
-        query = f"""
-        MATCH p=(n)-[*1..{hop}]-(m)
-        WHERE n.id IN $ents
-        RETURN p LIMIT 200
-        """
-        limit = 200
-
-    seen: set[str] = set()
-    result: list[str] = []
+    query = f"""
+    MATCH (n)-[r*1..{hop}]-(m)
+    WHERE n.id IN $ents
+    UNWIND r AS rel
+    WITH DISTINCT rel
+    RETURN startNode(rel) AS s, rel AS r, endNode(rel) AS e
+    LIMIT 500
+    """
 
     @_neo4j_retry
     def _query():
@@ -144,26 +119,19 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
             return list(session.run(query, ents=entities))
 
     records = _query()
-    if len(records) == limit:
+    if len(records) == 500:
         logger.warning(
-            "graph_expand(%s) hit LIMIT %d for entities=%s hop=%d — results may be truncated",
-            mode,
-            limit,
+            "graph_expand hit LIMIT 500 for entities=%s hop=%d — results may be truncated",
             entities,
             hop,
         )
 
-    def _add(triple: str | None) -> None:
+    seen: set[str] = set()
+    result: list[str] = []
+    for record in records:
+        triple = _rel_to_triple(record["r"], record["s"], record["e"])
         if triple and triple not in seen:
             seen.add(triple)
             result.append(triple)
-
-    if mode == "distinct":
-        for record in records:
-            _add(_rel_to_triple(record["r"], record["s"], record["e"]))
-    else:
-        for record in records:
-            for rel in record["p"].relationships:
-                _add(_rel_to_triple(rel, rel.start_node, rel.end_node))
 
     return result

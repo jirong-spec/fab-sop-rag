@@ -37,12 +37,6 @@ class Settings(BaseSettings):
     # Retrieval defaults
     default_max_hop: int = 2
     default_top_k: int = 4
-    # Graph traversal mode:
-    #   "distinct"   — distinct relationships within hop, LIMIT 500 (default;
-    #                  no path-explosion truncation, recall == undirected on eval)
-    #   "undirected" — paths in both directions, RETURN p LIMIT 200
-    #   "directed"   — outgoing-only paths, RETURN p LIMIT 200 (lower recall)
-    graph_traversal_mode: str = "distinct"
 
     # Guardrail fallback policies
     # topic_fallback_policy:     "lenient" = allow + warn | "strict" = block

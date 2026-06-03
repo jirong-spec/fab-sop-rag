@@ -280,7 +280,7 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 | directed（純 outgoing） | 92% | 88% | 6/8 | recall 退步，否決 |
 | **distinct** | **100%** | **100%** | **8/8** | 無截斷 ✅ |
 
-有向遍歷會退步：實體抽取無法保證 seed 落在邊的來源端，純 outgoing 會漏掉入邊（`REQUIRES_STATUS`、`TRIGGERS_SOP`）。可用 `GRAPH_TRAVERSAL_MODE` 切換（預設 `distinct`）。
+有向遍歷會退步：實體抽取無法保證 seed 落在邊的來源端，純 outgoing 會漏掉入邊（`REQUIRES_STATUS`、`TRIGGERS_SOP`）。實測後 **distinct 已固定為唯一遍歷策略**（`app/services/graph_store.py`）。
 
 ### 向量庫：Chroma → Qdrant
 

@@ -1,9 +1,6 @@
 # Secrets
 .env
 
-# Benchmark temp file (auto-deleted on clean run; excluded in case of crash)
-docker-compose.benchmark-override.yml
-
 # Python
 __pycache__/
 *.pyc
