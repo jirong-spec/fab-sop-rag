@@ -49,9 +49,9 @@ Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
 ### 嚴謹評估：held-out test + LLM-judge + 負例（2026-06-02）
 
 上面的 10 題表用 keyword 子字串比對、且 dev=test，會高估能力。為此另建一套嚴謹 harness
-（`scripts/eval_rigorous.py`，27 題於 `data/sample_queries/fab_queries_v2.json`），補上四項方法論：
+（`scripts/eval_rigorous.py`，39 題於 `data/sample_queries/fab_queries_v2.json`），補上四項方法論：
 
-- **held-out 切分**：test 的 15/18 條 gold 邊「從未被調參看過」，test 分數才是泛化指標。
+- **held-out 切分**：test 的 24/27 條 gold 邊「從未被調參看過」，test 分數才是泛化指標。
 - **retrieval recall@k**：以每題的 `gold_triples`（`[from, rel, to]`）量測檢索是否撈到正確的邊。
 - **LLM-as-judge**：每個答案對「圖譜推導出的標準答案」評 correct/partial/wrong，比 keyword 嚴格。
 - **負例 + 變異**：拒答（查無實體/步驟）、離題、注入各自計分；每題跑 3 次報 mean±std。
@@ -59,13 +59,14 @@ Vector RAG 欄位：✅ = A 全對、⚠ = 部分對、❌ = 全錯
 | 指標 | DEV（調過參） | **TEST（held-out）** |
 |------|--------------|---------------------|
 | Answer keyword-match | 100% | **100%** |
-| Retrieval recall@k（model triples） | 100% | **100%** |
+| Retrieval recall@k（model triples） | 100% | **96.5%** |
 | Answer correctness（LLM-judge） | 100% | **100%** |
 
 負例（held-out）：拒答 **100%** · 離題攔截 **100%** · 注入攔截 **100%**。3 次重跑全 **±0.0**（temp=0 可重現）。
+recall@k 96.5%（非 100%）來自多跳依賴鏈：低相似度的 `DEPENDS_ON` 邊偶爾被 cap 砍掉，但 evidence recall 仍 100%、答案 judge 仍 100%（模型由其餘 context 重建出鏈）。
 
-**但「太完美」本身就是警訊**：3 SOP / 48 邊的圖太小，2-hop 遍歷幾乎撈回整張圖，
-retrieval 根本沒被壓力測試（evidence recall 必然 100%）。要看真實水準，需要更大、有干擾的圖 ⤵
+**即便如此，keyword/judge 仍近滿分本身就是警訊**：3 SOP / 48 邊的圖太小，2-hop 遍歷幾乎撈回整張圖，
+retrieval 沒被真正壓力測試。要看真實水準，需要更大、有干擾的圖 ⤵
 
 ### Scale 壓力測試：10-SOP 合成圖（找出並修掉 2 個 scaling bug）
 

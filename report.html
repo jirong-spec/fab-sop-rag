@@ -762,13 +762,13 @@
       </p>
 
       <h3 style="margin-top:24px;">嚴謹評估：held-out test + LLM-judge + 負例</h3>
-      <p>27 題、dev/test 切分（test 的 15/18 條 gold 邊從未被調參看過）、retrieval recall@k、LLM-as-judge 對「圖譜推導出的標準答案」評分、拒答/離題/注入負例、每題 3 次取 mean±std。</p>
+      <p>39 題、dev/test 切分（test 的 24/27 條 gold 邊從未被調參看過）、retrieval recall@k、LLM-as-judge 對「圖譜推導出的標準答案」評分、拒答/離題/注入負例、每題 3 次取 mean±std。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>指標</th><th>DEV（調過參）</th><th>TEST（held-out）</th></tr></thead>
           <tbody>
             <tr><td>Answer keyword-match</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
-            <tr><td>Retrieval recall@k（model triples）</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
+            <tr><td>Retrieval recall@k（model triples）</td><td class="mono">100%</td><td class="mono pass">96.5%</td></tr>
             <tr><td>Answer correctness（LLM-judge）</td><td class="mono">100%</td><td class="mono pass">100%</td></tr>
             <tr><td>負例：拒答 / 離題 / 注入</td><td class="mono" colspan="2" style="text-align:center;">100% / 100% / 100%（±0.0，temp=0 可重現）</td></tr>
           </tbody>
