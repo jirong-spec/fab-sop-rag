@@ -26,10 +26,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SEED = ROOT / "data" / "graph_seed"
 DOCS = ROOT / "data" / "sop_docs"
 
-# Equipment shared with the EXISTING seed (already present as nodes) — referenced, not redefined.
-EXISTING_SHARED = {"TurboVacuumPump", "RFPowerSupply", "N2PurgeSystem", "DryPump"}
-
 # New shared equipment (defined once, reused across several new SOPs → hubs).
+# Equipment already in the 3-SOP seed (TurboVacuumPump, RFPowerSupply, N2PurgeSystem,
+# DryPump) is referenced by id below and merged by id, so it is not redefined here.
 SHARED_EQUIPMENT = {
     "GasDeliverySystem": "製程氣體輸送系統（多機台共用）",
     "DIWaterSystem": "去離子水供應系統（多機台共用）",

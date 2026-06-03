@@ -198,9 +198,6 @@ def render(per_run_aggs: dict, runs: int, by_cat: dict, use_judge: bool) -> str:
     L.append("")
     L.append("  Negatives (held-out, test split):")
     for label, key in [("  refusal accuracy", "refusal_acc"), ("  off-topic block acc", "offtopic_acc"), ("  injection block acc", "injection_acc")]:
-        test = [per_run_aggs["test"][i][key] for i in range(runs)]
-        dev = [per_run_aggs["dev"][i][key] for i in range(runs)]
-        both = [v for v in test if v is not None] or [v for v in dev if v is not None]
         L.append(f"  {label:<28}{_ms([per_run_aggs['all'][i][key] for i in range(runs)]):>20}")
     L.append("")
     lat = [per_run_aggs["all"][i]["latency_ms"] for i in range(runs)]

@@ -59,14 +59,14 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
         stage_latencies["guard_injection"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(inj)
         if not inj.passed:
-            return _blocked(req, guardrail_results, "blocked_injection", inj.reason, t0), stage_latencies
+            return _blocked(req, guardrail_results, "blocked_injection", inj.reason), stage_latencies
 
         _ts = time.perf_counter()
         topic = guard_topic(question)
         stage_latencies["guard_topic"] = int((time.perf_counter() - _ts) * 1000)
         guardrail_results.append(topic)
         if not topic.passed:
-            return _blocked(req, guardrail_results, "blocked_off_topic", topic.reason, t0), stage_latencies
+            return _blocked(req, guardrail_results, "blocked_off_topic", topic.reason), stage_latencies
 
     # ── Retrieval (Qdrant only) ───────────────────────────────────────────────
     _ts = time.perf_counter()
@@ -78,7 +78,7 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
         ev = _guard_evidence(chunks)
         guardrail_results.append(ev)
         if not ev.passed:
-            return _blocked(req, guardrail_results, "blocked_low_evidence", ev.reason, t0), stage_latencies
+            return _blocked(req, guardrail_results, "blocked_low_evidence", ev.reason), stage_latencies
 
     # ── Generation ────────────────────────────────────────────────────────────
     context = "\n\n---\n\n".join(chunks)
@@ -92,7 +92,7 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
     stage_latencies["generation"] = int((time.perf_counter() - _ts) * 1000)
 
     if answer == LLM_ERROR_ANSWER:
-        return _blocked(req, guardrail_results, "llm_error", answer, t0), stage_latencies
+        return _blocked(req, guardrail_results, "llm_error", answer), stage_latencies
 
     # ── Output Guard ──────────────────────────────────────────────────────────
     reasoning_type = "vector_rag"
@@ -121,7 +121,7 @@ def run_vector_pipeline(req: AskRequest) -> tuple[AskResponse, dict[str, int]]:
     ), stage_latencies
 
 
-def _blocked(req, guardrail_results, reasoning_type, reason, t0) -> AskResponse:
+def _blocked(req, guardrail_results, reasoning_type, reason) -> AskResponse:
     return AskResponse(
         question=req.question,
         status="blocked",

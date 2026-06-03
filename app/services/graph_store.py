@@ -91,12 +91,12 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
     Returns a deduplicated, insertion-ordered list of triples:
         (StartNode)-[:REL_TYPE]->(EndNode)
 
-    The undirected match lets us discover edges in both directions;
-    the triple string always reflects the stored edge direction.
-
-    MVP note: cycle avoidance is handled at the triple-dedup level.
-    A future improvement could add `WHERE ALL(n IN nodes(p) WHERE
-    single(x IN nodes(p) WHERE x = n))` for strict simple-path filtering.
+    Traversal mode is settings.graph_traversal_mode (default "distinct"):
+      "distinct"   — distinct relationships within `hop` hops (no path explosion);
+      "undirected" — both-direction variable-length paths, LIMIT 200;
+      "directed"   — outgoing-only paths, LIMIT 200.
+    Every triple string reflects the stored edge direction regardless of mode
+    (see _rel_to_triple); duplicates are removed by the `seen` set below.
     """
     if not entities:
         return []
@@ -127,7 +127,7 @@ def graph_expand(entities: list[str], hop: int = 2) -> list[str]:
         RETURN p LIMIT 200
         """
         limit = 200
-    else:  # "undirected" (default)
+    else:  # "undirected"
         query = f"""
         MATCH p=(n)-[*1..{hop}]-(m)
         WHERE n.id IN $ents

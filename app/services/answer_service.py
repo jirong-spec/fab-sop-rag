@@ -43,9 +43,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / norm if norm else 0.0
 
 
-def _score_triples(
-    question: str, triples: list[str], entities: list[str] | None = None
-) -> list[tuple[int, str]]:
+def _score_triples(question: str, triples: list[str]) -> list[tuple[int, str]]:
     """
     Rank triples by cosine similarity (bi-encoder) to the question.
     Scores are shown as percentages so the LLM can weigh relevance.
@@ -104,14 +102,12 @@ _PROMPT_TEMPLATE = """\
 【查詢結果】"""
 
 
-def _prepare_generation(
-    question: str, triples: list[str], entities: list[str] | None = None
-) -> tuple[str, list[str]]:
+def _prepare_generation(question: str, triples: list[str]) -> tuple[str, list[str]]:
     """
     Rerank triples, apply dynamic cap + SOP filter, build the LLM prompt.
     Returns (prompt, model_triples).  Pure CPU/embedding — no LLM call.
     """
-    scored_all = _score_triples(question, triples, entities=entities)
+    scored_all = _score_triples(question, triples)
     threshold = 0
     if scored_all:
         threshold = max(int(scored_all[0][0] * 0.50), 20)
@@ -191,9 +187,7 @@ def _fit_context_to_budget(question: str, scored: list[tuple[int, str]]) -> list
     return kept
 
 
-def generate_answer(
-    question: str, triples: list[str], entities: list[str] | None = None
-) -> tuple[str, list[str]]:
+def generate_answer(question: str, triples: list[str]) -> tuple[str, list[str]]:
     """
     Generate a grounded SOP answer from graph triples (synchronous).
     Returns (answer, model_triples).
@@ -201,16 +195,14 @@ def generate_answer(
     if not triples:
         return _NO_INFO_ANSWER, []
     try:
-        prompt, model_triples = _prepare_generation(question, triples, entities)
+        prompt, model_triples = _prepare_generation(question, triples)
         return chat_completion(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
         return _LLM_ERROR_ANSWER, []
 
 
-def generate_answer_stream(
-    question: str, triples: list[str], entities: list[str] | None = None
-) -> tuple[Iterator[str], list[str]]:
+def generate_answer_stream(question: str, triples: list[str]) -> tuple[Iterator[str], list[str]]:
     """
     Prepare generation and return (token_iterator, model_triples).
 
@@ -228,7 +220,7 @@ def generate_answer_stream(
         return _empty(), []
 
     try:
-        prompt, model_triples = _prepare_generation(question, triples, entities)
+        prompt, model_triples = _prepare_generation(question, triples)
         return chat_completion_stream(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
     except Exception as exc:
         logger.error("Answer stream preparation failed: %s", exc)

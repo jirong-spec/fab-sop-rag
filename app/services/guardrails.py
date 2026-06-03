@@ -88,8 +88,8 @@ def guard_injection(question: str) -> GuardrailResult:
     """
     Input guard #1 — rule-based prompt injection detection.
 
-    Scans the question against 20 patterns covering English and Chinese
-    instruction-override and persona-hijack exploits.  If any pattern
+    Scans the question against the INJECTION_PATTERNS list covering English and
+    Chinese instruction-override and persona-hijack exploits.  If any pattern
     matches, the request is blocked before reaching the LLM.
     """
     for pat in INJECTION_PATTERNS:

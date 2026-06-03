@@ -7,8 +7,10 @@ Two routers are registered in main.py:
                  GET /health  → basic liveness (no auth, used by Docker healthcheck)
 
   v1_router    — mounted at /v1
-                 GET /v1/health  → deep dependency probe
-                 POST /v1/ask    → guardrailed RAG query
+                 GET  /v1/health      → deep dependency probe
+                 POST /v1/ask         → guardrailed RAG query
+                 POST /v1/ask/stream  → guardrailed RAG query (SSE streaming)
+                 POST /v1/ingest      → merge SOP nodes/edges into the graph
 """
 
 import asyncio
@@ -331,6 +333,8 @@ def _run_ingest(req: IngestRequest) -> IngestResponse:
                 tx.commit()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except HTTPException:
+        raise  # propagate intended 4xx (e.g. node missing 'id') instead of masking it as 200 error
     except Exception as exc:
         logger.error("Ingest failed | source=%s error=%s", req.source_file, exc)
         return IngestResponse(

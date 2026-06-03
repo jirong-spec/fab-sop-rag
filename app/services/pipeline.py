@@ -78,7 +78,7 @@ def run_pipeline(req: AskRequest) -> AskResponse:
 
     # ── Generation ────────────────────────────────────────────────────────────
     _ts = time.perf_counter()
-    answer, model_triples = generate_answer(question, triples, entities=entities)
+    answer, model_triples = generate_answer(question, triples)
     stage_latencies["generation"] = int((time.perf_counter() - _ts) * 1000)
     logger.info("Answer generated | preview=%r", answer[:80])
 
@@ -180,7 +180,7 @@ def run_pipeline_stream(req: AskRequest, request_id: str = "-") -> Iterator[str]
             return
 
     # ── Streaming Generation ───────────────────────────────────────────────
-    token_iter, model_triples = generate_answer_stream(question, triples, entities=entities)
+    token_iter, model_triples = generate_answer_stream(question, triples)
     full_answer = ""
     try:
         for token in token_iter:
@@ -197,7 +197,7 @@ def run_pipeline_stream(req: AskRequest, request_id: str = "-") -> Iterator[str]
             "reasoning_type": "llm_error", "confidence": 0.0,
             "entities": entities, "evidence_triples": triples,
             "model_triples": model_triples, "source_docs": [],
-            "guardrail_results": [r.model_dump() for r in guardrail_results],
+            "guardrail_results": [r.model_dump(by_alias=True) for r in guardrail_results],
             "latency_ms": int((time.perf_counter() - t0) * 1000),
         })
         return
