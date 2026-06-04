@@ -7,8 +7,8 @@ Usage (inside Docker):
 Usage (local, from fab-sop-rag/):
     QDRANT_URL=http://localhost:6333 python scripts/ingest_vector.py
 
-Each .md file in data/sop_docs/ is split into chunks of ~400 characters
-with 80-character overlap, then embedded and stored in Qdrant.
+Each .md file in data/sop_docs/ is split into chunks of ~200 characters
+with 40-character overlap, then embedded and stored in Qdrant.
 The collection name comes from settings.qdrant_collection ("sop_docs") —
 the same collection the API's retrieval service reads, so queries
 automatically hit this data.
@@ -35,8 +35,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _DOCS_DIR = Path(__file__).resolve().parent.parent / "data" / "sop_docs"
-_CHUNK_SIZE = 400
-_CHUNK_OVERLAP = 80
+# Chunk size chosen by scripts/eval_chunk_ablation.py: on the held-out questions,
+# 200/40 significantly beat the prior 400/80 baseline on budget-normalised retrieval
+# recall (and was never worse per-question). Smaller windows isolate each SOP step, so
+# a step query can retrieve all of them within a fixed context budget.
+_CHUNK_SIZE = 200
+_CHUNK_OVERLAP = 40
 # Stable namespace so re-runs produce identical point IDs (idempotent upserts).
 _ID_NAMESPACE = uuid.UUID("a1b2c3d4-0000-4000-8000-000000000001")
 
