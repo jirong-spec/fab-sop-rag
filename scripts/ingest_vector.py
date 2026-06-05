@@ -35,10 +35,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _DOCS_DIR = Path(__file__).resolve().parent.parent / "data" / "sop_docs"
-# Chunk size chosen by scripts/eval_chunk_ablation.py: on the held-out questions,
-# 200/40 significantly beat the prior 400/80 baseline on budget-normalised retrieval
-# recall (and was never worse per-question). Smaller windows isolate each SOP step, so
-# a step query can retrieve all of them within a fixed context budget.
+# Chunk size guided by scripts/eval_chunk_ablation.py under a dev/test split: the prior
+# 400/80 baseline was consistently the WORST on both the dev and held-out test questions,
+# while ~200-char windows ranked among the best on both. The dev set is tiny (8 questions),
+# so this is NOT a statistically significant unique optimum — but 200/40 is a sound default
+# that isolates each SOP step into its own chunk (better recall within a context budget).
 _CHUNK_SIZE = 200
 _CHUNK_OVERLAP = 40
 # Stable namespace so re-runs produce identical point IDs (idempotent upserts).

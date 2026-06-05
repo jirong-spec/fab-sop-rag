@@ -27,16 +27,21 @@ Strategies:
     md-cap-<n>             md-header, then size-cap oversized sections (hybrid)
     whole-doc              no chunking (reference / sanity bound)
 
-Rigour: similarity_search is deterministic, so the only variance is the question
-sample. We report a bootstrap 95% CI per strategy and a paired bootstrap CI of
-(strategy − baseline) per question, so "X beats the baseline" is a significance
-claim, not a single point estimate.
+Rigour — dev/test discipline: choosing a chunk size by looking at the eval set IS
+tuning, so it must respect the held-out split. We RANK strategies on the dev split
+only (--select-split), pick the winner, then re-score that winner + baseline ONCE on
+the held-out test split (--report-split) — that test number is the honest one. The
+table prints both columns so you can see whether the dev ranking survives on test.
+similarity_search is deterministic, so the only variance is the question sample; we
+report bootstrap 95% CIs and a paired (winner − baseline) test-split CI, so "beats the
+baseline" is a significance claim, not a point estimate.
 
-Honest scope caveat: the corpus is 3 SOP docs / 27 answerable questions. Inter-document
-routing is near-trivial at this size, so this mainly measures *within-document* chunking
-(how to split one rich doc) and the budget-packing trade-off. The CIs among non-baseline
-strategies overlap; the robust, significant finding is "the 400/80 baseline is poorly
-placed", not a unique optimum. It is a retrieval-recall proxy, not end-to-end answer
+Honest scope caveat: the corpus is 3 SOP docs and the answerable split is small
+(8 dev / 19 test in fab_queries_v2). Model selection on 8 dev questions is statistically
+weak — the dev "winner" among the top cluster is near coin-flip — so the durable claim is
+"the 400/80 baseline is poorly placed", not a unique optimum. Inter-document routing is
+near-trivial at this corpus size, so this mainly measures *within-document* chunking and
+the budget-packing trade-off, and it is a retrieval-recall proxy, not end-to-end answer
 quality (the graph, not the vector store, drives answers here).
 
 Runs against a TEMPORARY collection (default "chunk_ablation"); the production
@@ -47,7 +52,7 @@ Usage (qdrant must be up; needs the embedding model, so run in the api image):
     docker compose up -d qdrant
     docker compose run --rm -T --no-deps api python scripts/eval_chunk_ablation.py
     docker compose run --rm -T --no-deps api python scripts/eval_chunk_ablation.py \
-        --budget 1500 --bootstrap 3000 --output data/eval_results/chunk_ablation.json
+        --select-split dev --report-split test --output data/eval_results/chunk_ablation.json
 """
 
 import argparse
@@ -57,6 +62,7 @@ import logging
 import random
 import statistics
 import sys
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -157,7 +163,7 @@ def load_corpus() -> dict[str, str]:
 
 
 def load_questions(path: Path, corpus_text: str) -> list[dict]:
-    """Answerable questions whose expected_keywords actually occur in the corpus."""
+    """Answerable questions (tagged with their dev/test split) whose expected_keywords occur in the corpus."""
     rows = json.loads(path.read_text(encoding="utf-8"))
     out = []
     for r in rows:
@@ -165,16 +171,19 @@ def load_questions(path: Path, corpus_text: str) -> list[dict]:
             continue
         kw = [k for k in r.get("expected_keywords", []) if k in corpus_text]
         if kw:
-            out.append({"question": r["question"], "kw": kw})
+            out.append({"question": r["question"], "kw": kw, "split": r.get("split", "?")})
     return out
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ablate chunking strategies on budget-normalised keyword recall.")
-    ap.add_argument("--budget", type=int, default=1500, help="primary retrieved-context budget in chars")
-    ap.add_argument("--budgets", type=int, nargs="+", default=[1000, 1500, 2000], help="budgets shown in the table")
+    ap.add_argument("--budget", type=int, default=1500, help="retrieved-context budget in chars")
     ap.add_argument("--bootstrap", type=int, default=3000, help="bootstrap resamples for CIs")
-    ap.add_argument("--baseline", type=str, default="char-400/80", help="strategy to compare others against")
+    ap.add_argument("--baseline", type=str, default="char-400/80", help="strategy to compare the winner against")
+    ap.add_argument("--select-split", type=str, default="dev", help="split used to RANK and pick the winner")
+    ap.add_argument(
+        "--report-split", type=str, default="test", help="held-out split the winner+baseline are re-scored on"
+    )
     ap.add_argument("--queries", type=str, default=str(_DEFAULT_QUERIES))
     ap.add_argument("--collection", type=str, default="chunk_ablation", help="temporary qdrant collection name")
     ap.add_argument("--output", type=str, default="", help="optional path to dump results JSON")
@@ -191,20 +200,25 @@ def main() -> None:
     corpus = load_corpus()
     questions = load_questions(Path(args.queries), "\n".join(corpus.values()))
     logger.info(
-        "corpus: %d docs (avg %d chars) | %d answerable questions",
+        "corpus: %d docs (avg %d chars) | %d answerable questions by split: %s",
         len(corpus),
         statistics.mean(len(t) for t in corpus.values()),
         len(questions),
+        dict(Counter(q["split"] for q in questions)),
     )
-    if not questions:
-        raise SystemExit("no answerable questions with in-corpus keywords")
+    sel_idx = [i for i, q in enumerate(questions) if q["split"] == args.select_split]
+    rep_idx = [i for i, q in enumerate(questions) if q["split"] == args.report_split]
+    if not sel_idx or not rep_idx:
+        raise SystemExit(
+            f"need both --select-split {args.select_split!r} and --report-split {args.report_split!r} present"
+        )
 
     emb = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs={"device": "cuda"})
     client = QdrantClient(url=settings.qdrant_url)
     strategies = build_strategies()
 
-    per_q: dict[str, list[float]] = {}  # strategy -> per-question recall at --budget
-    summary: dict[str, dict] = {}
+    per_q: dict[str, list[float]] = {}  # strategy -> per-question recall at --budget (parallel to `questions`)
+    meta: dict[str, dict] = {}
     try:
         for name, chunk_fn in strategies.items():
             docs = [
@@ -219,73 +233,89 @@ def main() -> None:
                 collection_name=args.collection,
                 force_recreate=True,
             )
-            budget_recall = {b: [] for b in args.budgets}
-            primary = []
-            for q in questions:
-                hits = vs.similarity_search(q["question"], k=10)
-                for b in args.budgets:
-                    budget_recall[b].append(recall_at_budget(hits, q["kw"], b))
-                primary.append(recall_at_budget(hits, q["kw"], args.budget))
-            per_q[name] = primary
-            summary[name] = {
+            per_q[name] = [
+                recall_at_budget(vs.similarity_search(q["question"], k=10), q["kw"], args.budget) for q in questions
+            ]
+            meta[name] = {
                 "n_chunks": len(docs),
                 "avg_chunk_chars": round(statistics.mean(len(d.page_content) for d in docs), 1),
-                "recall_by_budget": {b: round(statistics.mean(v) * 100, 1) for b, v in budget_recall.items()},
             }
-            logger.info(
-                "  %-14s %3d chunks  avg %4.0f chars  r@%d=%.1f%%",
-                name,
-                len(docs),
-                summary[name]["avg_chunk_chars"],
-                args.budget,
-                statistics.mean(primary) * 100,
-            )
     finally:
         client.delete_collection(args.collection)
         logger.info("cleaned up temporary collection %r", args.collection)
 
-    # ── report ───────────────────────────────────────────────────────────────
-    order = sorted(summary, key=lambda k: -summary[k]["recall_by_budget"][args.budget])
-    bud_hdr = "".join(f"r@{b:<6}" for b in args.budgets)
-    print(f"\n{'strategy':14}{'#ch':>5}{'avg':>6}  {bud_hdr}  r@{args.budget} 95%CI")
-    print("-" * (40 + 8 * len(args.budgets)))
-    for name in order:
-        s = summary[name]
-        lo, hi = bootstrap_ci(per_q[name], args.bootstrap)
-        s["recall_ci95"] = [round(lo * 100, 1), round(hi * 100, 1)]
-        cells = "".join(f"{s['recall_by_budget'][b]:5.1f}% " for b in args.budgets)
-        mark = " <- baseline" if name == args.baseline else ""
-        print(f"{name:14}{s['n_chunks']:5}{s['avg_chunk_chars']:6.0f}  {cells} [{lo * 100:4.1f},{hi * 100:4.1f}]{mark}")
+    def split_mean(name: str, idx: list[int]) -> float:
+        return statistics.mean(per_q[name][i] for i in idx)
 
+    def split_ci(name: str, idx: list[int]) -> tuple[float, float]:
+        return bootstrap_ci([per_q[name][i] for i in idx], args.bootstrap)
+
+    # ── table: select-split ranking, with the report-split column alongside for transparency ──
+    order = sorted(strategies, key=lambda n: -split_mean(n, sel_idx))
+    sel, rep = args.select_split, args.report_split
+    print(
+        f"\n{'strategy':14}{'#ch':>5}{'avg':>6}   {f'{sel}(n={len(sel_idx)}) r@{args.budget}':>22}   {f'{rep}(n={len(rep_idx)}) r@{args.budget}':>22}"
+    )
+    print("-" * 76)
+    for name in order:
+        slo, shi = split_ci(name, sel_idx)
+        rlo, rhi = split_ci(name, rep_idx)
+        mark = " <- baseline" if name == args.baseline else ""
+        print(
+            f"{name:14}{meta[name]['n_chunks']:5}{meta[name]['avg_chunk_chars']:6.0f}   "
+            f"{split_mean(name, sel_idx) * 100:5.1f}% [{slo * 100:4.1f},{shi * 100:4.1f}]   "
+            f"{split_mean(name, rep_idx) * 100:5.1f}% [{rlo * 100:4.1f},{rhi * 100:4.1f}]{mark}"
+        )
+
+    # ── honest protocol: pick on select-split, then report the held-out result once ──
+    winner = order[0]
     base = args.baseline
+    print(f"\n── model selection (pick on {sel}, report on held-out {rep}) ──")
+    print(
+        f"selected on {sel} (n={len(sel_idx)}): winner = {winner}  ({sel} r@{args.budget} = {split_mean(winner, sel_idx) * 100:.1f}%)"
+    )
+    held = {}
     if base in per_q:
-        print(f"\npaired vs baseline {base!r} (per-question, r@{args.budget}):")
-        for name in order:
-            if name == base:
-                continue
-            diff = [a - b for a, b in zip(per_q[name], per_q[base], strict=True)]
+        for name in dict.fromkeys([winner, base]):  # winner first, then baseline (dedup if winner==baseline)
+            lo, hi = split_ci(name, rep_idx)
+            held[name] = {
+                "recall": round(split_mean(name, rep_idx) * 100, 1),
+                "ci95": [round(lo * 100, 1), round(hi * 100, 1)],
+            }
+        if winner != base:
+            diff = [per_q[winner][i] - per_q[base][i] for i in rep_idx]
             w = sum(d > 0 for d in diff)
             t = sum(d == 0 for d in diff)
             lo, hi = bootstrap_ci(diff, args.bootstrap)
-            summary[name]["vs_baseline"] = {
-                "win": w,
-                "tie": t,
-                "loss": len(diff) - w - t,
-                "diff_ci95": [round(lo * 100, 1), round(hi * 100, 1)],
-            }
-            sig = "significant" if lo > 0 else "n.s."
+            sig = "significant" if lo > 0 else "n.s. (CI includes 0)"
+            print(f"held-out {rep} (n={len(rep_idx)}):")
             print(
-                f"  {name:14} win/tie/loss = {w:2}/{t:2}/{len(diff) - w - t:2}"
-                f"   diff 95%CI [{lo * 100:+.1f},{hi * 100:+.1f}]  {sig}"
+                f"  {winner:14} r@{args.budget} = {held[winner]['recall']:.1f}%   vs baseline {held[base]['recall']:.1f}%"
             )
+            print(
+                f"  paired (winner-baseline) win/tie/loss = {w}/{t}/{len(diff) - w - t}   diff 95%CI [{lo * 100:+.1f},{hi * 100:+.1f}]  {sig}"
+            )
+        else:
+            print(f"held-out {rep}: winner == baseline; nothing beats it on {sel}.")
 
     if args.output:
         out = {
             "corpus_docs": len(corpus),
-            "n_questions": len(questions),
-            "primary_budget": args.budget,
+            "split_counts": dict(Counter(q["split"] for q in questions)),
+            "budget": args.budget,
+            "select_split": sel,
+            "report_split": rep,
             "baseline": base,
-            "strategies": summary,
+            "winner": winner,
+            "held_out": held,
+            "strategies": {
+                n: {
+                    **meta[n],
+                    f"{sel}_recall": round(split_mean(n, sel_idx) * 100, 1),
+                    f"{rep}_recall": round(split_mean(n, rep_idx) * 100, 1),
+                }
+                for n in order
+            },
         }
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
