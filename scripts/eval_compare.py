@@ -44,7 +44,8 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-QUERIES_PATH = ROOT / "data" / "sample_queries" / "fab_queries.json"
+QUERY_DIR = ROOT / "data" / "sample_queries"
+QUERIES_PATHS = [QUERY_DIR / "fab_queries_dev.json", QUERY_DIR / "fab_queries_test.json"]
 MULTIHOP_IDS = {"q02", "q05", "q07"}
 
 
@@ -369,7 +370,7 @@ def main() -> None:
     parser.add_argument("--graph-only", action="store_true", help="Skip Vector RAG baseline")
     args = parser.parse_args()
 
-    queries = json.loads(QUERIES_PATH.read_text(encoding="utf-8"))
+    queries = [q for p in QUERIES_PATHS for q in json.loads(p.read_text(encoding="utf-8"))]
     raw = _run_live(queries, run_vector=not args.graph_only)
     results = {r["id"]: {"graph": r["graph"], "vector": r.get("vector")} for r in raw}
 

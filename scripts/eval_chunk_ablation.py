@@ -37,7 +37,7 @@ report bootstrap 95% CIs and a paired (winner − baseline) test-split CI, so "b
 baseline" is a significance claim, not a point estimate.
 
 Honest scope caveat: the corpus is 3 SOP docs and the answerable split is small
-(8 dev / 19 test in fab_queries_v2). Model selection on 8 dev questions is statistically
+(8 dev / 19 test across fab_queries_dev/test.json). Model selection on 8 dev questions is statistically
 weak — the dev "winner" among the top cluster is near coin-flip — so the durable claim is
 "the 400/80 baseline is poorly placed", not a unique optimum. Inter-document routing is
 near-trivial at this corpus size, so this mainly measures *within-document* chunking and
@@ -74,7 +74,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 _DOCS_DIR = ROOT / "data" / "sop_docs"
-_DEFAULT_QUERIES = ROOT / "data" / "sample_queries" / "fab_queries_v2.json"
+_QUERY_DIR = ROOT / "data" / "sample_queries"
+_DEFAULT_QUERIES = [_QUERY_DIR / "fab_queries_dev.json", _QUERY_DIR / "fab_queries_test.json"]
 
 
 # ── chunkers ────────────────────────────────────────────────────────────────
@@ -162,9 +163,9 @@ def load_corpus() -> dict[str, str]:
     return {Path(p).name: Path(p).read_text(encoding="utf-8") for p in sorted(glob.glob(str(_DOCS_DIR / "*.md")))}
 
 
-def load_questions(path: Path, corpus_text: str) -> list[dict]:
+def load_questions(paths: list[Path], corpus_text: str) -> list[dict]:
     """Answerable questions (tagged with their dev/test split) whose expected_keywords occur in the corpus."""
-    rows = json.loads(path.read_text(encoding="utf-8"))
+    rows = [r for p in paths for r in json.loads(Path(p).read_text(encoding="utf-8"))]
     out = []
     for r in rows:
         if r.get("type") != "answerable":
@@ -184,7 +185,7 @@ def main() -> None:
     ap.add_argument(
         "--report-split", type=str, default="test", help="held-out split the winner+baseline are re-scored on"
     )
-    ap.add_argument("--queries", type=str, default=str(_DEFAULT_QUERIES))
+    ap.add_argument("--queries", type=str, nargs="+", default=[str(p) for p in _DEFAULT_QUERIES])
     ap.add_argument("--collection", type=str, default="chunk_ablation", help="temporary qdrant collection name")
     ap.add_argument("--output", type=str, default="", help="optional path to dump results JSON")
     args = ap.parse_args()
@@ -198,7 +199,7 @@ def main() -> None:
         raise SystemExit(f"refusing to use the production collection {settings.qdrant_collection!r}")
 
     corpus = load_corpus()
-    questions = load_questions(Path(args.queries), "\n".join(corpus.values()))
+    questions = load_questions([Path(p) for p in args.queries], "\n".join(corpus.values()))
     logger.info(
         "corpus: %d docs (avg %d chars) | %d answerable questions by split: %s",
         len(corpus),

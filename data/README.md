@@ -19,7 +19,8 @@ data/
 │   └── edges.json                # Edge definitions (type + from/to + properties)
 │
 └── sample_queries/
-    └── fab_queries.json          # 10 test queries with expected behavior labels
+    ├── fab_queries_dev.json      # 10 dev queries (visible during tuning/selection)
+    └── fab_queries_test.json     # 29 held-out test queries (gold_triples + negatives)
 ```
 
 ---

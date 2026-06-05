@@ -1,0 +1,70 @@
+[
+  {
+    "id": "d01", "split": "dev", "type": "answerable", "category": "anomaly_handling",
+    "question": "蝕刻站發生壓力異常（PressureAnomaly）時，應該執行哪一份 SOP？",
+    "expected_keywords": ["SOP_Etch_001"],
+    "gold_triples": [["PressureAnomaly", "TRIGGERS_SOP", "SOP_Etch_001"]],
+    "gold": "應執行 SOP_Etch_001（蝕刻站壓力異常處置程序）。"
+  },
+  {
+    "id": "d02", "split": "dev", "type": "answerable", "category": "sop_step_sequence",
+    "question": "SOP_Etch_001 的第一個步驟是什麼？之後的步驟順序為何？",
+    "expected_keywords": ["CheckVacuumPump", "VerifyGasFlow", "InspectChamberLeak", "RestoreProcessCondition"],
+    "gold_triples": [["SOP_Etch_001", "FIRST_STEP", "CheckVacuumPump"], ["CheckVacuumPump", "NEXT_STEP", "VerifyGasFlow"], ["VerifyGasFlow", "NEXT_STEP", "InspectChamberLeak"], ["InspectChamberLeak", "NEXT_STEP", "RestoreProcessCondition"]],
+    "gold": "CheckVacuumPump → VerifyGasFlow → InspectChamberLeak → RestoreProcessCondition"
+  },
+  {
+    "id": "d03", "split": "dev", "type": "answerable", "category": "equipment_precondition",
+    "question": "執行 SOP_Etch_001 之前，TurboVacuumPump 和 RFPowerSupply 需要是什麼狀態？",
+    "expected_keywords": ["TurboVacuumPump", "RUNNING", "RFPowerSupply", "STANDBY_OR_OFF"],
+    "gold_triples": [["SOP_Etch_001", "PRECONDITION", "TurboVacuumPump"], ["SOP_Etch_001", "PRECONDITION", "RFPowerSupply"]],
+    "gold": "TurboVacuumPump = RUNNING；RFPowerSupply = STANDBY_OR_OFF"
+  },
+  {
+    "id": "d04", "split": "dev", "type": "answerable", "category": "step_requires_status",
+    "question": "CheckVacuumPump 步驟執行時，TurboVacuumPump 必須處於什麼狀態？",
+    "expected_keywords": ["TurboVacuumPump", "RUNNING"],
+    "gold_triples": [["CheckVacuumPump", "REQUIRES_STATUS", "TurboVacuumPump"]],
+    "gold": "RUNNING"
+  },
+  {
+    "id": "d05", "split": "dev", "type": "answerable", "category": "cross_doc_dependency",
+    "question": "SOP_Etch_001 中 TurboVacuumPump 的狀態定義，是在哪一份文件裡說明的？",
+    "expected_keywords": ["SOP_Pump_002"],
+    "gold_triples": [["SOP_Etch_001", "CROSS_DOC_DEPENDENCY", "SOP_Pump_002"]],
+    "gold": "定義於 SOP_Pump_002。"
+  },
+  {
+    "id": "d06", "split": "dev", "type": "answerable", "category": "interlock_condition",
+    "question": "EtchStation 的壓力 Interlock 在什麼條件下觸發？觸發後執行什麼動作？",
+    "expected_keywords": ["IL-E001", "RF"],
+    "gold_triples": [["EtchStation", "INTERLOCK_WITH", "PressureInterlock"]],
+    "gold": "IL-E001：pressure > 10 mTorr 時觸發，動作為 disable RF power。"
+  },
+  {
+    "id": "d07", "split": "dev", "type": "answerable", "category": "step_dependency",
+    "question": "SOP_Vent_003 中，OpenVentValve 步驟執行前必須先完成哪個步驟？",
+    "expected_keywords": ["SwitchPumpToStandby"],
+    "gold_triples": [["OpenVentValve", "DEPENDS_ON", "SwitchPumpToStandby"]],
+    "gold": "SwitchPumpToStandby"
+  },
+  {
+    "id": "d08", "split": "dev", "type": "answerable", "category": "pump_check_sequence",
+    "question": "SOP_Pump_002 從 ReadPumpStatus 開始的完整檢查步驟順序為何？",
+    "expected_keywords": ["ReadPumpStatus", "CheckBearingVibration", "VerifyPumpCooling", "LogAndClearAlarm"],
+    "gold_triples": [["SOP_Pump_002", "FIRST_STEP", "ReadPumpStatus"], ["ReadPumpStatus", "NEXT_STEP", "CheckBearingVibration"], ["CheckBearingVibration", "NEXT_STEP", "VerifyPumpCooling"], ["VerifyPumpCooling", "NEXT_STEP", "LogAndClearAlarm"]],
+    "gold": "ReadPumpStatus → CheckBearingVibration → VerifyPumpCooling → LogAndClearAlarm"
+  },
+  {
+    "id": "d09", "split": "dev", "type": "offtopic", "category": "off_topic_blocked",
+    "question": "台積電最近的股價是多少？",
+    "expected_behavior": "blocked_off_topic",
+    "expected_keywords": [], "gold_triples": [], "gold": "應被主題 guard 攔截。"
+  },
+  {
+    "id": "d10", "split": "dev", "type": "offtopic", "category": "off_topic_blocked",
+    "question": "請用 Python 寫一個快速排序演算法。",
+    "expected_behavior": "blocked_off_topic",
+    "expected_keywords": [], "gold_triples": [], "gold": "應被主題 guard 攔截。"
+  }
+]

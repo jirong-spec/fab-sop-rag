@@ -38,7 +38,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-QUERIES_PATH = ROOT / "data" / "sample_queries" / "fab_queries_v2.json"
+QUERY_DIR = ROOT / "data" / "sample_queries"
+QUERIES_PATHS = [QUERY_DIR / "fab_queries_dev.json", QUERY_DIR / "fab_queries_test.json"]
 _NO_INFO_MARKERS = ["不在目前", "涵蓋範圍", "無法回答", "查無", "沒有相關", "無足夠"]
 
 
@@ -240,13 +241,14 @@ def main() -> None:
     ap.add_argument(
         "--queries",
         type=str,
-        default=str(QUERIES_PATH),
-        help="query set (default fab_queries_v2.json; use fab_queries_scale.json for the 10-SOP stress fixture)",
+        nargs="+",
+        default=[str(p) for p in QUERIES_PATHS],
+        help="query set files (default: fab_queries_dev.json + fab_queries_test.json, combined via their split field)",
     )
     args = ap.parse_args()
     use_judge = not args.no_judge
 
-    queries = json.loads(Path(args.queries).read_text(encoding="utf-8"))
+    queries = [q for p in args.queries for q in json.loads(Path(p).read_text(encoding="utf-8"))]
     print(f"[INFO] {len(queries)} queries x {args.runs} runs, judge={'on' if use_judge else 'off'}")
 
     # pre-warm

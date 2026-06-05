@@ -229,7 +229,7 @@ LLM-judge 的 fallback 政策可由環境變數調整（`TOPIC_FALLBACK_POLICY` 
 
 ### 3. Scale 壓力測試（10-SOP 合成圖）
 
-小圖上連 held-out 都接近滿分，代表 retrieval 沒被壓到。`scripts/gen_synthetic_sops.py` 確定性生成 7 份合成 SOP（→ **10 SOP / 93 節點 / 168 邊**），刻意讓 `RFPowerSupply`、`N2PurgeSystem`、`TurboVacuumPump` 被多份 SOP 共用成 **hub**，製造「一堆長得很像、狀態卻不同的競爭邊」。用 `fab_queries_scale.json`（15 題 hub 題）評測，**暴露兩個小圖藏住的 bug**並修掉：
+小圖上連 held-out 都接近滿分，代表 retrieval 沒被壓到。`scripts/gen_synthetic_sops.py` 確定性生成 7 份合成 SOP（→ **10 SOP / 93 節點 / 168 邊**），刻意讓 `RFPowerSupply`、`N2PurgeSystem`、`TurboVacuumPump` 被多份 SOP 共用成 **hub**，製造「一堆長得很像、狀態卻不同的競爭邊」。用 15 題 hub scale 題評測（一次性 fixture，現已移除，可由 git 還原），**暴露兩個小圖藏住的 bug**並修掉：
 
 | 指標（10-SOP held-out test） | 修前 | **修後** |
 |------|------|----------|
@@ -309,9 +309,8 @@ data/
 │   ├── nodes.json                # 29 節點
 │   └── edges.json                # 48 邊
 └── sample_queries/
-    ├── fab_queries.json          # 10 題（Graph vs Vector 基線，eval_compare）
-    ├── fab_queries_v2.json       # 39 題（嚴謹評估，含 dev/test、gold_triples、負例）
-    └── fab_queries_scale.json    # 15 題（10-SOP scale 壓測 fixture）
+    ├── fab_queries_dev.json      # 10 題 dev（調參/選型時可看）
+    └── fab_queries_test.json     # 29 題 held-out test（含 gold_triples、負例）
 ```
 
 > 所有資料皆為**合成範例資料**，僅供教學/測試，不代表任何真實機台程序。
