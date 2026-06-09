@@ -16,10 +16,9 @@ Explicit fallback  The refusal phrase is fixed so that guard_grounding can recog
 
 import logging
 import re
-from collections.abc import Iterator
 
 from app.config import settings
-from app.services.llm_client import chat_completion, chat_completion_stream
+from app.services.llm_client import chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -101,71 +100,87 @@ _PROMPT_TEMPLATE = """\
 【查詢結果】"""
 
 
+def _apply_dynamic_cap(scored_all: list[tuple[int, str]], n_total: int) -> list[tuple[int, str]]:
+    """Keep triples scoring >= max(50% of the top score, 20), hard-capped at 100, with a
+    floor of top-5 so generation is never starved when everything scores low."""
+    if not scored_all:
+        return scored_all
+    threshold = max(int(scored_all[0][0] * 0.50), 20)
+    scored = [item for item in scored_all if item[0] >= threshold][:100]
+    if len(scored) < 5:
+        scored = scored_all[:5]
+    logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), n_total, threshold)
+    return scored
+
+
+def _restrict_to_asked_sop(
+    scored: list[tuple[int, str]],
+    triples: list[str],
+    scored_all: list[tuple[int, str]],
+    sop_ids: list[str],
+    question: str,
+) -> list[tuple[int, str]]:
+    """When the question names specific SOP_ ids: drop triples belonging to OTHER SOPs,
+    then (for step/sequence questions) add back NEXT_STEP edges the cap dropped so the step
+    chain stays complete. A step is "foreign" if its DEFINED_IN edge points at another SOP."""
+    foreign_steps: set[str] = set()
+    for _, t in scored:
+        m_step = re.search(r"^\((\w+)[\[\)]", t)
+        m_sop = re.search(r"-\[:DEFINED_IN[^\]]*\]->\((\w+)", t)
+        if m_step and m_sop and m_sop.group(1).startswith("SOP_") and m_sop.group(1) not in sop_ids:
+            foreign_steps.add(m_step.group(1))
+
+    foreign_step_pat = (
+        re.compile(r"[\(\)](" + "|".join(re.escape(s) for s in foreign_steps) + r")[\[\)\-]")
+        if foreign_steps
+        else None
+    )
+
+    def _is_foreign(triple: str) -> bool:
+        m = re.search(r"^\((\w+)[\[\)]", triple)
+        if m and m.group(1).startswith("SOP_") and m.group(1) not in sop_ids:
+            return True
+        return bool(foreign_step_pat and foreign_step_pat.search(triple))
+
+    filtered = [(pct, t) for pct, t in scored if not _is_foreign(t)]
+    if len(filtered) >= 3:  # don't over-filter into near-empty evidence
+        logger.debug("SOP filter: %d→%d triples (sop_ids=%s)", len(scored), len(filtered), sop_ids)
+        scored = filtered
+
+    if re.search(r"步驟|順序|流程", question):
+        existing = {t for _, t in scored}
+        score_lookup = {t: s for s, t in scored_all}
+        supplements = [t for t in triples if "NEXT_STEP" in t and t not in existing and not _is_foreign(t)]
+        if supplements:
+            logger.debug("NEXT_STEP supplement: +%d triples", len(supplements))
+            scored = scored + [(score_lookup.get(t, 0), t) for t in supplements]
+
+    return scored
+
+
+def _build_prompt(question: str, scored: list[tuple[int, str]]) -> tuple[str, list[str]]:
+    """Render ranked triples (with relevance %) into the prompt. Returns (prompt, model_triples)."""
+    context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
+    prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
+    return prompt, [triple for _, triple in scored]
+
+
 def _prepare_generation(question: str, triples: list[str]) -> tuple[str, list[str]]:
     """
     Rerank triples, apply dynamic cap + SOP filter, build the LLM prompt.
     Returns (prompt, model_triples).  Pure CPU/embedding — no LLM call.
     """
     scored_all = _score_triples(question, triples)
-    threshold = 0
-    if scored_all:
-        threshold = max(int(scored_all[0][0] * 0.50), 20)
-        scored = [item for item in scored_all if item[0] >= threshold]
-        scored = scored[:100] if len(scored) > 100 else scored
-        if len(scored) < 5:
-            scored = scored_all[:5]
-    else:
-        scored = scored_all
-    logger.debug("Dynamic cap: %d/%d triples (threshold=%.0f%%)", len(scored), len(triples), threshold)
-    model_triples = [triple for _, triple in scored]
+    scored = _apply_dynamic_cap(scored_all, len(triples))
 
     sop_ids = re.findall(r"SOP_\w+", question)
     if sop_ids:
-        foreign_steps: set[str] = set()
-        for t in model_triples:
-            m_step = re.search(r"^\((\w+)[\[\)]", t)
-            m_sop = re.search(r"-\[:DEFINED_IN[^\]]*\]->\((\w+)", t)
-            if m_step and m_sop and m_sop.group(1).startswith("SOP_") and m_sop.group(1) not in sop_ids:
-                foreign_steps.add(m_step.group(1))
+        scored = _restrict_to_asked_sop(scored, triples, scored_all, sop_ids, question)
 
-        foreign_step_pat = (
-            re.compile(r"[\(\)](" + "|".join(re.escape(s) for s in foreign_steps) + r")[\[\)\-]")
-            if foreign_steps
-            else None
-        )
-
-        def _is_foreign(triple: str) -> bool:
-            m = re.search(r"^\((\w+)[\[\)]", triple)
-            if m and m.group(1).startswith("SOP_") and m.group(1) not in sop_ids:
-                return True
-            return bool(foreign_step_pat and foreign_step_pat.search(triple))
-
-        filtered = [t for t in model_triples if not _is_foreign(t)]
-        if len(filtered) >= 3:
-            logger.debug("SOP filter: %d→%d triples (sop_ids=%s)", len(model_triples), len(filtered), sop_ids)
-            model_triples = filtered
-            scored = [(pct, t) for pct, t in scored if t in set(filtered)]
-
-        if re.search(r"步驟|順序|流程", question):
-            existing = set(model_triples)
-            score_lookup = {t: s for s, t in scored_all}
-            supplements = [t for t in triples if "NEXT_STEP" in t and t not in existing and not _is_foreign(t)]
-            if supplements:
-                logger.debug("NEXT_STEP supplement: +%d triples", len(supplements))
-                for t in supplements:
-                    model_triples.append(t)
-                    scored.append((score_lookup.get(t, 0), t))
-
-    # ── Token-budget trim ────────────────────────────────────────────────────
-    # Cap by triple COUNT (above) is not enough: on a dense graph 100 triples can
-    # blow the model context window (HTTP 400). Keep the highest-ranked triples
-    # that fit within (context_window − completion − chat-template margin).
+    # Count cap alone isn't enough: on a dense graph 100 triples can still blow the context
+    # window (HTTP 400). Trim to the highest-ranked triples that fit the token budget.
     scored = _fit_context_to_budget(question, scored)
-    model_triples = [triple for _, triple in scored]
-
-    context = "\n".join(f"[{pct}%] {triple}" for pct, triple in scored)
-    prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
-    return prompt, model_triples
+    return _build_prompt(question, scored)
 
 
 def _fit_context_to_budget(question: str, scored: list[tuple[int, str]]) -> list[tuple[int, str]]:
@@ -203,34 +218,3 @@ def generate_answer(question: str, triples: list[str]) -> tuple[str, list[str]]:
     except Exception as exc:
         logger.error("Answer generation failed: %s", exc)
         return _LLM_ERROR_ANSWER, []
-
-
-def generate_answer_stream(question: str, triples: list[str]) -> tuple[Iterator[str], list[str]]:
-    """
-    Prepare generation and return (token_iterator, model_triples).
-
-    model_triples is returned immediately (before streaming starts) so the
-    caller can start guard_grounding as soon as the stream finishes.
-
-    Usage:
-        token_iter, model_triples = generate_answer_stream(question, triples)
-        for token in token_iter:
-            ...stream to client...
-    """
-    if not triples:
-
-        def _empty():
-            yield _NO_INFO_ANSWER
-
-        return _empty(), []
-
-    try:
-        prompt, model_triples = _prepare_generation(question, triples)
-        return chat_completion_stream(prompt, temperature=0.0, max_tokens=GEN_MAX_TOKENS), model_triples
-    except Exception as exc:
-        logger.error("Answer stream preparation failed: %s", exc)
-
-        def _error():
-            yield _LLM_ERROR_ANSWER
-
-        return _error(), []

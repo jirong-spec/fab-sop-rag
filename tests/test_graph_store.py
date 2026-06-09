@@ -40,8 +40,14 @@ def test_edge_gloss_interlock_includes_trigger_action():
 
 
 def test_edge_gloss_unknown_type_is_none():
-    # NEXT_STEP / DEPENDS_ON already ship a description in the seed, so no gloss is synthesised.
-    assert _edge_gloss("NEXT_STEP", "A", "B", {}) is None
+    # Only the nine schema edge types are templated; an unknown type yields no gloss.
+    assert _edge_gloss("SOME_UNKNOWN_REL", "A", "B", {}) is None
+
+
+def test_edge_gloss_next_step_is_synthesised():
+    # NEXT_STEP / DEPENDS_ON are now templated in _edge_gloss too (single source).
+    assert _edge_gloss("NEXT_STEP", "A", "B", {}) == "A 完成後，下一步執行 B"
+    assert _edge_gloss("DEPENDS_ON", "B", "A", {}) == "B 執行前必須先完成前置依賴步驟 A"
 
 
 def test_rel_to_triple_adds_gloss_when_no_description():
@@ -52,10 +58,12 @@ def test_rel_to_triple_adds_gloss_when_no_description():
     assert "description" in triple  # synthesised gloss was injected
 
 
-def test_rel_to_triple_preserves_existing_description():
+def test_rel_to_triple_gloss_overrides_stored_description():
+    # _edge_gloss is the single source: any stored description is overwritten by the gloss.
     rel = FakeRel("NEXT_STEP", {"description": "原本的說明"})
     triple = _rel_to_triple(rel, {"id": "A"}, {"id": "B"})
-    assert "原本的說明" in triple
+    assert "原本的說明" not in triple
+    assert "A 完成後，下一步執行 B" in triple
 
 
 def test_rel_to_triple_none_when_endpoint_missing_id():

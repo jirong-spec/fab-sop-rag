@@ -195,22 +195,10 @@ def build():
                 edge("FIRST_STEP", "SOPDocument", sid, "SOPStep", st["id"])
             else:
                 prev = steps[i - 1]["id"]
-                edge(
-                    "NEXT_STEP",
-                    "SOPStep",
-                    prev,
-                    "SOPStep",
-                    st["id"],
-                    {"description": f"{prev} 完成後，下一步執行 {st['id']}"},
-                )
-                edge(
-                    "DEPENDS_ON",
-                    "SOPStep",
-                    st["id"],
-                    "SOPStep",
-                    prev,
-                    {"description": f"{st['id']} 執行前必須先完成前置依賴步驟 {prev}"},
-                )
+                # NEXT_STEP / DEPENDS_ON descriptions are synthesized at query time by
+                # graph_store._edge_gloss (single source of truth), so none is stored here.
+                edge("NEXT_STEP", "SOPStep", prev, "SOPStep", st["id"])
+                edge("DEPENDS_ON", "SOPStep", st["id"], "SOPStep", prev)
             if "requires" in st:
                 eq, status = st["requires"]
                 edge("REQUIRES_STATUS", "SOPStep", st["id"], "Equipment", eq, {"required_status": status})

@@ -42,11 +42,13 @@ def _node_label(node) -> str:
 
 
 def _edge_gloss(rel_type: str, s: str, e: str, props: dict) -> str | None:
-    """Synthesize a Traditional-Chinese description for edge types that ship
-    without one. CamelCase-only edges (REQUIRES_STATUS, PRECONDITION, …) embed
-    poorly against Chinese questions, so the bi-encoder rerank pushes them down
-    and the cap drops them. A Chinese gloss gives them semantic content to match,
-    mirroring the NEXT_STEP/DEPENDS_ON `description` enrichment already in the seed."""
+    """Synthesize a Traditional-Chinese description for an edge from its type +
+    node IDs + props. All nine schema edge types are templated here, and
+    _rel_to_triple always applies the gloss — so this function is the single
+    source of truth for every edge's `description`. The gloss matters because
+    CamelCase-only edges (REQUIRES_STATUS, NEXT_STEP, …) embed poorly against
+    Chinese questions — without it the bi-encoder rerank pushes them down and the
+    dynamic cap drops them."""
     st = props.get("required_status", "")
     if rel_type == "REQUIRES_STATUS":
         return f"{s} 步驟執行時要求設備 {e} 的狀態為 {st}"
@@ -62,6 +64,10 @@ def _edge_gloss(rel_type: str, s: str, e: str, props: dict) -> str | None:
         return f"步驟 {s} 定義於 SOP 文件 {e}"
     if rel_type == "CROSS_DOC_DEPENDENCY":
         return f"SOP 文件 {s} 跨文件依賴 {e}：{props.get('reason', '')}"
+    if rel_type == "NEXT_STEP":
+        return f"{s} 完成後，下一步執行 {e}"
+    if rel_type == "DEPENDS_ON":
+        return f"{s} 執行前必須先完成前置依賴步驟 {e}"
     return None
 
 
@@ -74,10 +80,11 @@ def _rel_to_triple(rel, start_node, end_node) -> str | None:
     if not start_name or not end_name:
         return None
     rel_props = dict(rel)
-    if "description" not in rel_props:
-        gloss = _edge_gloss(rel.type, start_node.get("id", ""), end_node.get("id", ""), rel_props)
-        if gloss:
-            rel_props["description"] = gloss
+    # _edge_gloss is the single source of truth for `description`: always (re)generate
+    # it from the edge type, overwriting any stored value, so the wording lives in one place.
+    gloss = _edge_gloss(rel.type, start_node.get("id", ""), end_node.get("id", ""), rel_props)
+    if gloss:
+        rel_props["description"] = gloss
     if rel_props:
         prop_str = ", ".join(f"{k}: {v!r}" for k, v in rel_props.items())
         return f"({start_name})-[:{rel.type} {{{prop_str}}}]->({end_name})"
