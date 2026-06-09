@@ -8,8 +8,6 @@ from fastapi.responses import JSONResponse
 from app.api.routes import root_router, v1_router
 from app.config import APP_VERSION
 from app.logging_config import setup_logging
-from app.middleware.request_id import RequestIDMiddleware
-from app.utils.context import get_request_id
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -66,11 +64,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Middleware ────────────────────────────────────────────────────────────────
-# RequestIDMiddleware must be added before exception handlers run so that
-# every error response also carries the correlation ID.
-app.add_middleware(RequestIDMiddleware)
-
 # ── Global exception handlers ─────────────────────────────────────────────────
 
 
@@ -82,7 +75,6 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
         content={
             "error": "Validation Error",
             "detail": exc.errors(),
-            "request_id": get_request_id(),
         },
     )
 
@@ -96,7 +88,6 @@ async def _generic_error_handler(request: Request, exc: Exception) -> JSONRespon
         content={
             "error": "Internal Server Error",
             "detail": str(exc),
-            "request_id": get_request_id(),
         },
     )
 

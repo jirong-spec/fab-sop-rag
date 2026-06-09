@@ -1,6 +1,5 @@
 import logging
 import os
-from collections.abc import Iterator
 
 from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -61,43 +60,4 @@ def chat_completion(
         raise RuntimeError(f"LLM connection error: {e}") from e
     except APIError as e:
         logger.error("LLM API error (status=%s): %s", getattr(e, "status_code", "?"), e)
-        raise RuntimeError(f"LLM API error: {e}") from e
-
-
-@_llm_retry
-def _create_stream(prompt: str, temperature: float, max_tokens: int):
-    """Create the vLLM streaming context manager — retried on transient failures."""
-    return _client.chat.completions.create(
-        model=settings.llm_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=True,
-    )
-
-
-def chat_completion_stream(
-    prompt: str,
-    temperature: float = 0.0,
-    max_tokens: int = 512,
-) -> Iterator[str]:
-    """
-    Stream token strings from the LLM as they arrive.
-    Yields each non-empty delta content string.
-    Raises RuntimeError on connection / API errors.
-    """
-    try:
-        with _create_stream(prompt, temperature, max_tokens) as stream:
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
-    except APITimeoutError as e:
-        logger.error("LLM stream timeout: %s", e)
-        raise RuntimeError(f"LLM timeout: {e}") from e
-    except APIConnectionError as e:
-        logger.error("LLM stream connection error: %s", e)
-        raise RuntimeError(f"LLM connection error: {e}") from e
-    except APIError as e:
-        logger.error("LLM stream API error (status=%s): %s", getattr(e, "status_code", "?"), e)
         raise RuntimeError(f"LLM API error: {e}") from e

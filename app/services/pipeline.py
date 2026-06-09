@@ -1,10 +1,9 @@
 import json
 import logging
 import time
-from collections.abc import Iterator
 
 from app.schemas import AskRequest, AskResponse, DebugInfo, GuardrailResult
-from app.services.answer_service import LLM_ERROR_ANSWER, generate_answer, generate_answer_stream
+from app.services.answer_service import LLM_ERROR_ANSWER, generate_answer
 from app.services.guardrails import (
     guard_evidence,
     guard_grounding,
@@ -124,129 +123,6 @@ def run_pipeline(req: AskRequest) -> AskResponse:
         reasoning_type=reasoning_type,
         confidence=confidence,
         debug=debug,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Streaming pipeline
-# ---------------------------------------------------------------------------
-
-
-def run_pipeline_stream(req: AskRequest, request_id: str = "-") -> Iterator[str]:
-    """
-    Streaming variant of run_pipeline.
-
-    Yields Server-Sent Events (text/event-stream format):
-      {"type": "token",   "text": "..."}          — one per LLM output token
-      {"type": "done",    "answer": "...", ...}    — final metadata after grounding
-      {"type": "blocked", "status": "...", ...}    — if any guard blocks
-
-    Flow:
-      Guards 1-3 + Retrieval run synchronously (fast, ~100ms total).
-      Generation tokens stream immediately to the client (~1900ms).
-      guard_grounding runs after the last token (~1150ms, but client already
-      has the full answer by then).
-    """
-    t0 = time.perf_counter()
-    question = req.question
-    guardrail_results: list[GuardrailResult] = []
-
-    def _sse(data: dict) -> str:
-        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-    # ── Input Guards ───────────────────────────────────────────────────────
-    if req.enable_guards:
-        inj = guard_injection(question)
-        guardrail_results.append(inj)
-        if not inj.passed:
-            yield _sse(
-                {"type": "blocked", "status": "blocked", "reasoning_type": "blocked_injection", "reason": inj.reason}
-            )
-            return
-
-        topic = guard_topic(question)
-        guardrail_results.append(topic)
-        if not topic.passed:
-            yield _sse(
-                {"type": "blocked", "status": "blocked", "reasoning_type": "blocked_off_topic", "reason": topic.reason}
-            )
-            return
-
-    # ── Retrieval ──────────────────────────────────────────────────────────
-    entities, triples = retrieve(question, top_k=req.top_k, max_hop=req.max_hop)
-
-    if req.enable_guards:
-        ev = guard_evidence(triples)
-        guardrail_results.append(ev)
-        if not ev.passed:
-            yield _sse(
-                {
-                    "type": "blocked",
-                    "status": "blocked",
-                    "reasoning_type": "blocked_low_evidence",
-                    "reason": ev.reason,
-                    "entities": entities,
-                }
-            )
-            return
-
-    # ── Streaming Generation ───────────────────────────────────────────────
-    token_iter, model_triples = generate_answer_stream(question, triples)
-    full_answer = ""
-    try:
-        for token in token_iter:
-            full_answer += token
-            yield _sse({"type": "token", "text": token})
-    except Exception as exc:
-        logger.error("Stream generation failed mid-stream: %s", exc)
-        yield _sse({"type": "error", "status": "error", "reason": "LLM 串流中斷，請重試"})
-        return
-
-    if full_answer == LLM_ERROR_ANSWER:
-        yield _sse(
-            {
-                "type": "done",
-                "status": "error",
-                "answer": full_answer,
-                "reasoning_type": "llm_error",
-                "confidence": 0.0,
-                "entities": entities,
-                "evidence_triples": triples,
-                "model_triples": model_triples,
-                "source_docs": [],
-                "guardrail_results": [r.model_dump(by_alias=True) for r in guardrail_results],
-                "latency_ms": int((time.perf_counter() - t0) * 1000),
-            }
-        )
-        return
-
-    # ── Output Guard (after last token) ───────────────────────────────────
-    reasoning_type = "graph_rag"
-    confidence = 1.0
-    if req.enable_guards:
-        gr = guard_grounding(full_answer, model_triples)
-        guardrail_results.append(gr)
-        if not gr.passed:
-            reasoning_type = "answered_with_warning"
-            confidence = 0.5
-
-    latency_ms = int((time.perf_counter() - t0) * 1000)
-
-    yield _sse(
-        {
-            "type": "done",
-            "status": "answered",
-            "answer": full_answer,
-            "reasoning_type": reasoning_type,
-            "confidence": confidence,
-            "entities": entities,
-            "evidence_triples": triples,
-            "model_triples": model_triples,
-            "source_docs": extract_source_docs(triples),
-            "guardrail_results": [r.model_dump(by_alias=True) for r in guardrail_results],
-            "latency_ms": latency_ms,
-            "request_id": request_id,
-        }
     )
 
 

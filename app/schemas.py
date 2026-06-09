@@ -59,7 +59,6 @@ class AskResponse(BaseModel):
         ),
     )
     confidence: float = Field(..., ge=0.0, le=1.0)
-    request_id: str = Field("-", description="X-Request-ID correlation token")
     debug: DebugInfo | None = None
 
 
@@ -93,19 +92,13 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded", "down"]
     version: str
     services: dict[str, ServiceStatus]
-    request_id: str = "-"
 
 
 # ── Standardised error envelope ───────────────────────────────────────────────
 
 
 class ErrorResponse(BaseModel):
-    """
-    Uniform error body returned by the global exception handlers.
-    Every error includes the request_id so engineers can correlate
-    a client-visible failure with the server log.
-    """
+    """Uniform error body returned by the global exception handlers."""
 
     error: str = Field(..., description="Short error category")
     detail: Any = Field(..., description="Human-readable or structured detail")
-    request_id: str = Field("-", description="X-Request-ID of the failed request")
