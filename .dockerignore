@@ -38,3 +38,4 @@ data/eval_results/
 docker-compose*.yml
 report.html
 visualisation.png
+*.html

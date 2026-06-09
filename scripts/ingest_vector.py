@@ -59,8 +59,9 @@ def _chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLA
 
 def main() -> None:
     from langchain_core.documents import Document
-    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_qdrant import QdrantVectorStore
+
+    from app.services.vector_store import _get_embeddings
 
     md_files = sorted(_DOCS_DIR.glob("*.md"))
     if not md_files:
@@ -69,14 +70,10 @@ def main() -> None:
 
     logger.info("Found %d SOP documents: %s", len(md_files), [f.name for f in md_files])
 
-    try:
-        import torch
-
-        _model_kwargs = {"device": "cuda"} if torch.cuda.is_available() else {"device": "cpu"}
-    except ImportError:
-        _model_kwargs = {"device": "cpu"}
-    logger.info("Loading embedding model: %s (device=%s)", settings.embedding_model, _model_kwargs["device"])
-    embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_model_kwargs)
+    # Reuse the app's embedder so the e5 query/passage prefixes are applied consistently
+    # (docs embedded with "passage: "; queries with "query: " at serve time).
+    logger.info("Loading embedding model: %s", settings.embedding_model)
+    embeddings = _get_embeddings()
 
     documents: list[Document] = []
     ids: list[str] = []

@@ -10,3 +10,6 @@ venv/
 
 # OS
 .DS_Store
+
+# Local interview prep — not for the repo
+interview_commands.html

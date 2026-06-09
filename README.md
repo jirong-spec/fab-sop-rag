@@ -17,7 +17,7 @@
 - **嚴謹評估，不是自我感覺良好**：held-out dev/test 切分、retrieval **recall@k**、**LLM-as-judge**、拒答/離題/注入**負例**、3 次重跑報變異——不是 keyword 子字串自我安慰。
 - **靠合成大圖壓測抓到並修掉 2 個 scaling bug**：context 溢出、低相似度邊被 rerank 砍掉（詳見 [評估](#評估)）。
 - **四道 guardrail**：注入偵測 → 主題過濾 → 證據充足性 → 事實接地性，降低離題與幻覺。
-- **單機 Docker Compose**：FastAPI + Neo4j + Qdrant + vLLM，一個 `docker compose up` 起整套；含 SSE 串流與 Streamlit demo。
+- **單機 Docker Compose**：FastAPI + Neo4j + Qdrant + vLLM，一個 `docker compose up` 起整套；含 Streamlit demo。
 
 ---
 
@@ -161,10 +161,6 @@ curl -X POST http://localhost:8000/v1/ask \
 | `answered` | 正常回答，所有 guardrail 通過 |
 | `answered_with_warning` | 回答了，但事實接地性有疑慮（confidence 0.5） |
 | `blocked_injection` / `blocked_off_topic` / `blocked_low_evidence` | 分別被 Guard 1 / 2 / 3 擋下 |
-
-### `POST /v1/ask/stream`
-
-相同的 guardrail pipeline，但 LLM 輸出以 **Server-Sent Events** 串流回傳（第一個 token < 200ms）。事件 `type`：`token`（每個 token）、`done`（最終結果與 metadata）、`blocked`（被擋下）。
 
 ### 其他端點
 

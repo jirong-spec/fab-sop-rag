@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DEV-ONLY override — auto-merged by `docker compose up`.
+#
+# Bind-mounts the source so host edits appear live inside the container, and runs
+# uvicorn with --reload so the server restarts on change (no rebuild, no cp).
+#
+#   Dev   : docker compose up                       # base + this override
+#   Prod  : docker compose -f docker-compose.yml up # baked image, override IGNORED
+#
+# Only the `api` service changes; neo4j / qdrant / vllm are untouched.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  api:
+    # Bind-mount source + seed data live; hf_cache volume is inherited from base.
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+    # --reload restarts on source change; watch only app/ to ignore the cache/data dirs.
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/app

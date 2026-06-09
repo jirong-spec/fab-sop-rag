@@ -1,6 +1,7 @@
 import logging
 import threading
 
+from langchain_core.embeddings import Embeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
@@ -8,7 +9,27 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_embeddings: HuggingFaceEmbeddings | None = None
+
+class _PrefixedEmbeddings(Embeddings):
+    """Wrap an embeddings backend, prepending instruction prefixes at EMBED time only.
+
+    e5-family models expect "query: " / "passage: " prefixes; applying them here keeps the
+    stored chunk text (page_content) clean while still embedding the prefixed form.
+    """
+
+    def __init__(self, base: Embeddings, query_prefix: str, passage_prefix: str):
+        self._base = base
+        self._q = query_prefix
+        self._p = passage_prefix
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._base.embed_documents([self._p + t for t in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._base.embed_query(self._q + text)
+
+
+_embeddings: Embeddings | None = None
 _reranker_embeddings: HuggingFaceEmbeddings | None = None
 _vector_store: QdrantVectorStore | None = None
 # Three separate locks to prevent deadlock: _get_vector_store calls _get_embeddings
@@ -32,14 +53,29 @@ def _cuda_kwargs() -> dict:
     return {"device": "cpu"}
 
 
-def _get_embeddings() -> HuggingFaceEmbeddings:
-    """Lazy-init the document embedding model; singleton with double-checked locking."""
+def _get_embeddings() -> Embeddings:
+    """Lazy-init the document embedding model; singleton with double-checked locking.
+
+    Wraps the model in _PrefixedEmbeddings when query/passage prefixes are configured
+    (e5-family); the doc retrieval embedder and the reranker are separate singletons.
+    """
     global _embeddings
     if _embeddings is None:
         with _embeddings_lock:
             if _embeddings is None:
                 logger.info("Loading embedding model: %s", settings.embedding_model)
-                _embeddings = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_cuda_kwargs())
+                base = HuggingFaceEmbeddings(model_name=settings.embedding_model, model_kwargs=_cuda_kwargs())
+                if settings.embedding_query_prefix or settings.embedding_passage_prefix:
+                    logger.info(
+                        "Embedding prefixes: query=%r passage=%r",
+                        settings.embedding_query_prefix,
+                        settings.embedding_passage_prefix,
+                    )
+                    _embeddings = _PrefixedEmbeddings(
+                        base, settings.embedding_query_prefix, settings.embedding_passage_prefix
+                    )
+                else:
+                    _embeddings = base
     return _embeddings
 
 

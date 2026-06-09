@@ -18,14 +18,10 @@ Usage
 
   # Save JSON results:
   docker compose exec -T api python scripts/eval_compare.py --output data/eval_results/latest.json
-
-  # Log to MLflow:
-  docker compose exec -T api python scripts/eval_compare.py --mlflow-uri http://mlflow:5000
 """
 
 import argparse
 import json
-import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -34,19 +30,37 @@ from pathlib import Path
 
 QUERY_TIMEOUT_SEC = 120
 
-try:
-    import mlflow
-
-    _MLFLOW_AVAILABLE = True
-except ImportError:
-    _MLFLOW_AVAILABLE = False
-
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 QUERY_DIR = ROOT / "data" / "sample_queries"
 QUERIES_PATHS = [QUERY_DIR / "fab_queries_dev.json", QUERY_DIR / "fab_queries_test.json"]
-MULTIHOP_IDS = {"q02", "q05", "q07"}
+# Multi-hop questions are identified by their data label, not hardcoded IDs: the old
+# {"q02","q05","q07"} set referred to a retired query file and silently matched nothing
+# after the dev/test split. Driving off `category` keeps this correct as the set evolves.
+MULTIHOP_CATEGORY = "multihop_dependency"
+
+# Question-type buckets for the --by-structure report. The Graph-vs-Vector gap
+# concentrates in questions whose answer must be assembled ACROSS graph edges
+# (ordering, dependency chains, cross-document references) — no single retrieved
+# chunk holds it — versus single-fact lookups where the answer is one contiguous
+# span. Multi-hop alone is too small a subset (n=2) to headline; these buckets show
+# where the graph advantage actually lives. Driven by `category` so a new question
+# type that fits neither bucket is reported as uncategorized rather than silently dropped.
+STRUCTURED_CATEGORIES = {
+    "sop_step_sequence",
+    "pump_check_sequence",
+    "step_dependency",
+    "multihop_dependency",
+    "cross_doc_dependency",
+    "defined_in",
+    "interlock_condition",
+}
+LOOKUP_CATEGORIES = {
+    "equipment_precondition",
+    "step_requires_status",
+    "anomaly_handling",
+}
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
@@ -229,7 +243,7 @@ def render_report(queries: list[dict], results: dict) -> str:
         g_latencies.append(g_ms)
         if v_resp:
             v_latencies.append(v_ms)
-        tag = " [↑HOP]" if qid in MULTIHOP_IDS else ""
+        tag = " [↑HOP]" if q.get("category") == MULTIHOP_CATEGORY else ""
 
         if g_score["is_block_query"]:
             block_total += 1
@@ -249,7 +263,7 @@ def render_report(queries: list[dict], results: dict) -> str:
             g_kw_total += gt
             g_ret_hits += grh
             g_ret_total += gt
-            if qid in MULTIHOP_IDS:
+            if q.get("category") == MULTIHOP_CATEGORY:
                 mh_hits += gh
                 mh_total += gt
             r = "R✅" if grh == gt else ("R⚠" if grh > 0 else "R❌")
@@ -300,64 +314,98 @@ def render_report(queries: list[dict], results: dict) -> str:
     lines += [
         sep,
         "",
-        f"  Multi-hop (q02/q05/q07): {mh_hits}/{mh_total} ({mh_pct:.1f}%)  [Graph RAG]",
+        f"  Multi-hop ({MULTIHOP_CATEGORY}): {mh_hits}/{mh_total} ({mh_pct:.1f}%)  [Graph RAG]",
         "",
         "=" * 60,
     ]
     return "\n".join(lines)
 
 
-# ── MLflow ────────────────────────────────────────────────────────────────────
+def render_structure_report(queries: list[dict], results: dict) -> str:
+    """Break the Graph-vs-Vector ANSWER gap down by question structure.
 
+    Two buckets, by category:
+      STRUCTURED — answer must be assembled across graph edges (ordering, dependency
+                   chains, cross-document refs); no single retrieved chunk holds it.
+      LOOKUP     — answer is a single contiguous fact attached to one entity.
 
-def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> None:
-    mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment("fab-sop-eval")
+    Reports keyword-level recall and question-level pass (all keywords present) for
+    each bucket, with a per-category breakdown sorted worst-Vector-first. Graph RAG is
+    ~100% throughout, so the spread lives in Vector — this shows WHERE the graph
+    advantage concentrates without over-indexing on the tiny multi-hop subset.
+    """
+    from collections import defaultdict
 
-    params = {"reranker": "bi-encoder-cosine", "cap_strategy": "dynamic_top50pct", "cot_method": "implicit"}
-    try:
-        from app.services.answer_service import _PROMPT_TEMPLATE
+    stat: dict = defaultdict(lambda: {"g_kw": 0, "v_kw": 0, "kw": 0, "g_q": 0, "v_q": 0, "n": 0, "has_v": False})
+    uncategorized: dict = defaultdict(int)
 
-        params["cot_method"] = "implicit" if "心中逐一核對" in _PROMPT_TEMPLATE else "none"
-    except Exception:
-        pass
-
-    ret_hits = ret_total = kw_hits = kw_total = 0
-    latencies = []
-    per_q: dict = {}
     for q in queries:
-        qid = q["id"]
-        resp = results.get(qid, {}).get("graph", {})
-        score = score_response(resp, q)
-        ms = resp.get("latency_ms", 0)
-        latencies.append(ms)
-        if not score["is_block_query"]:
-            kw_hits += score["keyword_hits"]
-            kw_total += score["keyword_total"]
-            ret_hits += score["retrieval_hits"]
-            ret_total += score["retrieval_total"]
-            per_q[f"{qid}_answer"] = score["keyword_hits"] / score["keyword_total"] if score["keyword_total"] else 0
-            per_q[f"{qid}_latency_ms"] = ms
+        g_resp = results.get(q["id"], {}).get("graph", {}) or {}
+        gs = score_response(g_resp, q)
+        if gs["is_block_query"] or gs["keyword_total"] == 0:
+            continue  # guardrail / refusal / injection — no answer keywords to score
+        cat = q.get("category", "?")
+        if cat not in STRUCTURED_CATEGORIES and cat not in LOOKUP_CATEGORIES:
+            uncategorized[cat] += 1
+        n = gs["keyword_total"]
+        s = stat[cat]
+        s["kw"] += n
+        s["n"] += 1
+        s["g_kw"] += gs["keyword_hits"]
+        s["g_q"] += int(gs["keyword_hits"] == n)
+        v_resp = results.get(q["id"], {}).get("vector")
+        if v_resp:
+            vs = score_response(v_resp, q)
+            s["has_v"] = True
+            s["v_kw"] += vs["keyword_hits"]
+            s["v_q"] += int(vs["keyword_hits"] == n)
 
-    metrics = {
-        "retrieval_rate": ret_hits / ret_total if ret_total else 0,
-        "answer_rate": kw_hits / kw_total if kw_total else 0,
-        "avg_latency_ms": sum(latencies) / len(latencies) if latencies else 0,
-        **per_q,
-    }
+    def _pct(a: int, b: int) -> str:
+        return f"{a / b * 100:.0f}%" if b else "  -"
 
-    with mlflow.start_run():
-        mlflow.log_params(params)
-        mlflow.log_metrics(metrics)
-        import tempfile
+    lines = ["", "=" * 64, "  Fab SOP RAG — Answer gap by question structure", "=" * 64]
+    for title, cats in (
+        ("STRUCTURED  (multi-edge: ordering / dependency / cross-doc)", STRUCTURED_CATEGORIES),
+        ("LOOKUP  (single contiguous fact)", LOOKUP_CATEGORIES),
+    ):
+        present = [c for c in cats if c in stat]
+        kw = sum(stat[c]["kw"] for c in present)
+        if not kw:
+            continue
+        g_kw = sum(stat[c]["g_kw"] for c in present)
+        v_kw = sum(stat[c]["v_kw"] for c in present)
+        g_q = sum(stat[c]["g_q"] for c in present)
+        v_q = sum(stat[c]["v_q"] for c in present)
+        nq = sum(stat[c]["n"] for c in present)
+        has_v = any(stat[c]["has_v"] for c in present)
+        lines.append("")
+        lines.append(f"  {title}    n={nq} questions, {kw} keywords")
+        if has_v:
+            lines.append(
+                f"    keyword recall   Graph {g_kw}/{kw} ({_pct(g_kw, kw)})   "
+                f"Vector {v_kw}/{kw} ({_pct(v_kw, kw)})   gap +{(g_kw - v_kw) / kw * 100:.0f}pp"
+            )
+            lines.append(
+                f"    question pass    Graph {g_q}/{nq} ({_pct(g_q, nq)})   "
+                f"Vector {v_q}/{nq} ({_pct(v_q, nq)})   gap +{(g_q - v_q) / nq * 100:.0f}pp"
+            )
+        else:
+            lines.append(f"    keyword recall   Graph {g_kw}/{kw} ({_pct(g_kw, kw)})   (Vector baseline not run)")
+            lines.append(f"    question pass    Graph {g_q}/{nq} ({_pct(g_q, nq)})")
+        for c in sorted(present, key=lambda c: (stat[c]["v_kw"] / stat[c]["kw"]) if stat[c]["has_v"] else 1.0):
+            s = stat[c]
+            v_part = f"V kw {_pct(s['v_kw'], s['kw']):>4}  q {s['v_q']}/{s['n']}" if s["has_v"] else "V —"
+            lines.append(
+                f"      {c:24} {s['n']:>2}q   G kw {_pct(s['g_kw'], s['kw']):>4}  q {s['g_q']}/{s['n']}  │  {v_part}"
+            )
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
-            json.dump({"queries": queries, "results": results}, f, ensure_ascii=False, indent=2)
-            tmp = f.name
-        mlflow.log_artifact(tmp, artifact_path="eval_results")
-        os.unlink(tmp)
-
-    print(f"[INFO] MLflow logged: answer={metrics['answer_rate']:.1%} latency={metrics['avg_latency_ms']:.0f}ms")
+    if uncategorized:
+        lines.append("")
+        lines.append("  [WARNING] answerable categories in NO bucket (excluded from the split above):")
+        for c, n in sorted(uncategorized.items()):
+            lines.append(f"            {c} ({n}q) — add to STRUCTURED_CATEGORIES or LOOKUP_CATEGORIES")
+    lines += ["", "=" * 64]
+    return "\n".join(lines)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -366,8 +414,12 @@ def _log_to_mlflow(tracking_uri: str, queries: list[dict], results: dict) -> Non
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=str, default="")
-    parser.add_argument("--mlflow-uri", type=str, default="")
     parser.add_argument("--graph-only", action="store_true", help="Skip Vector RAG baseline")
+    parser.add_argument(
+        "--by-structure",
+        action="store_true",
+        help="Also break the answer gap down by question structure (structured vs lookup)",
+    )
     args = parser.parse_args()
 
     queries = [q for p in QUERIES_PATHS for q in json.loads(p.read_text(encoding="utf-8"))]
@@ -376,8 +428,8 @@ def main() -> None:
 
     print(render_report(queries, results))
 
-    if args.mlflow_uri and _MLFLOW_AVAILABLE:
-        _log_to_mlflow(args.mlflow_uri, queries, results)
+    if args.by_structure:
+        print(render_structure_report(queries, results))
 
     if args.output:
         out = Path(args.output)
