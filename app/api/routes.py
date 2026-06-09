@@ -9,7 +9,6 @@ Two routers are registered in main.py:
   v1_router    — mounted at /v1
                  GET  /v1/health      → deep dependency probe
                  POST /v1/ask         → guardrailed RAG query
-                 POST /v1/ask/stream  → guardrailed RAG query (SSE streaming)
                  POST /v1/ingest      → merge SOP nodes/edges into the graph
 """
 
@@ -19,7 +18,7 @@ import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from app.auth import require_api_key
 from app.config import APP_VERSION, settings
@@ -31,8 +30,8 @@ from app.schemas import (
     IngestResponse,
     ServiceStatus,
 )
-from app.services.pipeline import run_pipeline, run_pipeline_stream
-from app.utils.context import get_request_id
+from app.services.pipeline import run_pipeline
+from app.services.vector_pipeline import run_vector_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +129,6 @@ def _probe_qdrant() -> ServiceStatus:
     response_model=HealthResponse,
 )
 async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
-    req_id = get_request_id()
-
     neo4j_result, vllm_result, qdrant_result = await asyncio.gather(
         asyncio.to_thread(_probe_neo4j),
         _probe_vllm(),
@@ -167,7 +164,6 @@ async def health_deep(_: None = Depends(require_api_key)) -> JSONResponse:
         status=overall,
         version=APP_VERSION,
         services=services,
-        request_id=req_id,
     )
     return JSONResponse(
         status_code=http_status,
@@ -198,75 +194,30 @@ async def ask(
     req: AskRequest,
     _: None = Depends(require_api_key),
 ) -> JSONResponse:
-    req_id = get_request_id()
     logger.info("POST /v1/ask | question=%r", req.question[:80])
     result: AskResponse = await asyncio.to_thread(run_pipeline, req)
-    result.request_id = req_id
     return JSONResponse(content=result.model_dump(by_alias=True, exclude_none=True))
 
 
-# ── SOP knowledge query (streaming) ──────────────────────────────────────────
+# ── Vector-only RAG baseline (for side-by-side comparison) ────────────────────
 
 
 @v1_router.post(
-    "/ask/stream",
-    summary="Query the SOP knowledge base (streaming)",
+    "/ask/vector",
+    summary="Query via the vector-only RAG baseline",
     description=(
-        "Same guardrail pipeline as `/v1/ask`, but tokens stream via "
-        "Server-Sent Events so the first word appears in <200ms.\n\n"
-        "Event types:\n"
-        '- `token` — one LLM output token (`{"type":"token","text":"..."}`)\n'
-        "- `done`  — final metadata after guard_grounding completes\n"
-        "- `blocked` — a guardrail blocked the request\n\n"
-        "guard_grounding runs after the last token; clients see the full answer "
-        "~1150ms before the final `done` event arrives."
+        "Same four guardrails as `/v1/ask`, but retrieves document chunks by vector "
+        "similarity and feeds them straight to the LLM — no entity extraction, no graph "
+        "traversal. Exposed for side-by-side comparison with the graph pipeline."
     ),
-    response_class=StreamingResponse,
 )
-async def ask_stream(
+async def ask_vector(
     req: AskRequest,
     _: None = Depends(require_api_key),
-) -> StreamingResponse:
-    logger.info("POST /v1/ask/stream | question=%r", req.question[:80])
-    req_id = get_request_id()
-
-    async def _generate():
-        import contextvars
-        import threading
-
-        loop = asyncio.get_running_loop()
-        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        _SENTINEL = object()
-        cancelled = threading.Event()
-        ctx = contextvars.copy_context()  # carry request_id into the thread
-
-        def _run_sync():
-            try:
-                for event in run_pipeline_stream(req, request_id=req_id):
-                    if cancelled.is_set():
-                        break
-                    try:
-                        loop.call_soon_threadsafe(queue.put_nowait, event)
-                    except (RuntimeError, asyncio.QueueFull):
-                        break
-            finally:
-                try:
-                    loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
-                except RuntimeError:
-                    pass
-
-        threading.Thread(target=lambda: ctx.run(_run_sync), daemon=True).start()
-
-        try:
-            while True:
-                item = await queue.get()
-                if item is _SENTINEL:
-                    break
-                yield item
-        finally:
-            cancelled.set()
-
-    return StreamingResponse(_generate(), media_type="text/event-stream")
+) -> JSONResponse:
+    logger.info("POST /v1/ask/vector | question=%r", req.question[:80])
+    result, _stages = await asyncio.to_thread(run_vector_pipeline, req)
+    return JSONResponse(content=result.model_dump(by_alias=True, exclude_none=True))
 
 
 # ── SOP knowledge graph ingest ────────────────────────────────────────────────
@@ -396,12 +347,10 @@ async def ingest(
     req: IngestRequest,
     _: None = Depends(require_api_key),
 ) -> IngestResponse:
-    req_id = get_request_id()
     logger.info(
-        "POST /v1/ingest | source=%s nodes=%d edges=%d req_id=%s",
+        "POST /v1/ingest | source=%s nodes=%d edges=%d",
         req.source_file,
         len(req.nodes),
         len(req.edges),
-        req_id,
     )
     return await asyncio.to_thread(_run_ingest, req)
