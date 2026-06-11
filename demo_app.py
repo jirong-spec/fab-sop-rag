@@ -4,8 +4,11 @@ Run: streamlit run demo_app.py
 Requires: pip install streamlit requests
 """
 
+import json
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -20,13 +23,29 @@ GUARD_LABELS = {
     "fact_grounding": "事實接地",
 }
 
-EXAMPLE_QUESTIONS = [
-    "蝕刻站發生壓力異常時，應該執行哪份 SOP？",
-    "SOP_Etch_001 的步驟順序為何？",
-    "執行 SOP_Etch_001 前，TurboVacuumPump 需要是什麼狀態？",
-    "EtchStation 的壓力 Interlock 在什麼條件下觸發？",
-    "SOP_Etch_001 中 TurboVacuumPump 的狀態定義在哪份文件？",
-]
+SAFETY_CATS = {
+    "off_topic_blocked",
+    "injection_blocked",
+    "refusal_unknown_entity",
+    "refusal_unknown_step",
+}
+
+
+def _load_queries() -> list[dict]:
+    """Load every eval query (dev + test) so the sidebar can offer the full bank."""
+    out: list[dict] = []
+    qdir = Path(__file__).parent / "data" / "sample_queries"
+    for f in sorted(qdir.glob("fab_queries_*.json")):
+        try:
+            out.extend(json.loads(f.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
+ALL_QUERIES = _load_queries()
+# question -> its gold triples ([from, rel, to], answerable questions only)
+GOLD_BY_Q = {q["question"]: (q.get("gold_triples") or []) for q in ALL_QUERIES}
 
 st.set_page_config(
     page_title="晶圓廠 SOP 知識查詢",
@@ -40,10 +59,21 @@ with st.sidebar:
     st.caption("Graph RAG vs Vector RAG")
     st.divider()
 
-    st.subheader("範例問題")
-    for q in EXAMPLE_QUESTIONS:
-        if st.button(q, use_container_width=True, key=q):
-            st.session_state["pending_question"] = q
+    st.subheader("題庫（點擊直接查詢）")
+    if ALL_QUERIES:
+        by_cat: dict[str, list[dict]] = defaultdict(list)
+        for q in ALL_QUERIES:
+            by_cat[q.get("category", "其他")].append(q)
+        ans_cats = [c for c in by_cat if c not in SAFETY_CATS]
+        saf_cats = [c for c in by_cat if c in SAFETY_CATS]
+        for cat in ans_cats + saf_cats:
+            tag = "🚫" if cat in SAFETY_CATS else "✅"
+            with st.expander(f"{tag} {cat}（{len(by_cat[cat])}）"):
+                for q in by_cat[cat]:
+                    if st.button(q["question"], key="q_" + q.get("id", q["question"]), use_container_width=True):
+                        st.session_state["pending_question"] = q["question"]
+    else:
+        st.caption("（找不到 data/sample_queries，題庫為空）")
 
     st.divider()
     st.subheader("系統資訊")
@@ -144,19 +174,59 @@ def render_pair(graph, graph_ms, vector, vector_ms) -> None:
         render_compact(vector, vector_ms)
 
 
+def render_gold_comparison(question: str, graph: dict | None, vector: dict | None) -> None:
+    """For questions with gold triples, show which pipeline actually retrieved each one.
+
+    Graph hit  = the gold [from, rel, to] appears as a retrieved triple.
+    Vector hit = both gold entities appear in the retrieved chunks (text only — vector has
+                 no notion of the *relation*, which is exactly the point).
+    """
+    gold = GOLD_BY_Q.get(question) or []
+    if not gold:
+        return
+    g_triples = (graph or {}).get("evidence_triples") or []
+    v_text = "\n".join((vector or {}).get("evidence_triples") or [])
+
+    rows, g_hits, v_hits = [], 0, 0
+    for tri in gold:
+        if len(tri) != 3:
+            continue
+        f, r, t = tri
+        g_hit = any(f in s and r in s and t in s for s in g_triples)
+        v_hit = bool(f in v_text and t in v_text)
+        g_hits += g_hit
+        v_hits += v_hit
+        rows.append(
+            {
+                "Gold triple（標準答案邊）": f"({f})-[{r}]->({t})",
+                "🟢 Graph 撈到": "✅" if g_hit else "❌",
+                "⚪ Vector 文字含實體": "✅" if v_hit else "❌",
+            }
+        )
+    if not rows:
+        return
+    st.markdown("##### 🔬 Gold triple 檢索對照")
+    st.table(rows)
+    st.caption(
+        f"Graph 撈到 {g_hits}/{len(rows)} 條 gold 邊（結構化關係）　|　"
+        f"Vector {v_hits}/{len(rows)} 條（文字裡有實體，但沒有『關係』結構）"
+    )
+
+
 # Render chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant":
             render_pair(msg.get("graph"), msg.get("graph_ms"), msg.get("vector"), msg.get("vector_ms"))
+            render_gold_comparison(msg.get("question", ""), msg.get("graph"), msg.get("vector"))
         else:
             st.write(msg["content"])
 
-# Handle sidebar example button clicks
+# Handle sidebar question-bank clicks
 pending = st.session_state.pop("pending_question", None)
 
 # Chat input
-prompt = st.chat_input("輸入問題，例如：SOP_Etch_001 的步驟順序為何？") or pending
+prompt = st.chat_input("輸入問題，或從左側題庫點一題") or pending
 
 if prompt:
     with st.chat_message("user"):
@@ -172,10 +242,12 @@ if prompt:
                 graph, graph_ms = fut_g.result()
                 vector, vector_ms = fut_v.result()
         render_pair(graph, graph_ms, vector, vector_ms)
+        render_gold_comparison(prompt, graph, vector)
 
     st.session_state.messages.append(
         {
             "role": "assistant",
+            "question": prompt,
             "graph": graph,
             "graph_ms": graph_ms,
             "vector": vector,
