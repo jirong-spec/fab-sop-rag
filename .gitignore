@@ -12,7 +12,7 @@ venv/
 .DS_Store
 .github/
 .claude/
-.gitignore/
+
 
 # Local interview prep — not for the repo
 interview_commands.html
