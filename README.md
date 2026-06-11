@@ -112,7 +112,7 @@ streamlit run demo_app.py               # → http://localhost:8501
 # 嚴謹評估（held-out + LLM-judge + 負例，39 題）
 docker compose exec -T api python scripts/eval_rigorous.py --runs 3
 
-# Graph vs Vector 基線比較（keyword，10 題）
+# Graph vs Vector 基線比較（keyword，27 可答題）
 docker compose exec -T api python scripts/eval_compare.py
 ```
 
@@ -192,36 +192,38 @@ LLM-judge 的 fallback 政策可由環境變數調整（`TOPIC_FALLBACK_POLICY` 
 
 ### 1. 嚴謹評估（held-out + LLM-judge + 負例）
 
-`scripts/eval_rigorous.py`（39 題於 `data/sample_queries/fab_queries_v2.json`），補上四項方法論修掉舊評估的硬傷：
+`scripts/eval_rigorous.py`（39 題：dev 10 + test 29，`fab_queries_dev.json` + `fab_queries_test.json`），補上四項方法論修掉舊評估的硬傷：
 
-- **held-out 切分**：test 的 24/27 條 gold 邊「從未被調參看過」，避免「拿考古題考自己」的過擬合假象。
+- **held-out 切分**：test 題的 gold 邊「從未被調參看過」，避免「拿考古題考自己」的過擬合假象。
 - **retrieval recall@k**：以每題的 `gold_triples`（`[from, rel, to]`）量測檢索是否撈到正確的邊。
 - **LLM-as-judge**：答案對「圖譜推導的標準答案」評 correct/partial/wrong，比 keyword 子字串嚴格。
 - **負例 + 變異**：拒答（查無實體/步驟）、離題、注入各自計分；每題跑 3 次報 mean±std。
 
 | 指標 | DEV（調過參） | **TEST（held-out）** |
 |------|--------------|---------------------|
-| Answer keyword-match | 100% | **100%** |
+| Answer keyword-match | 100% | **96.5%** |
 | Retrieval recall@k（model triples） | 100% | **96.5%** |
-| Answer correctness（LLM-judge） | 100% | **100%** |
+| Retrieval recall（evidence） | 100% | **100%** |
+| Answer correctness（LLM-judge） | 93.8% | **97.4%** |
 | 負例：拒答 / 離題 / 注入 | — | **100% / 100% / 100%** |
 
-3 次重跑全 **±0.0**（temp=0 可重現）。recall@k 96.5%（非 100%）來自多跳依賴鏈：低相似度的 `DEPENDS_ON` 邊偶爾被 cap 砍掉，但 evidence recall 仍 100%、judge 仍 100%（模型由其餘 context 重建出鏈）。
+temp=0，數字可重現。test 的 keyword / recall@k 為 96.5%（非 100%）來自多跳依賴鏈：低相似度的 `DEPENDS_ON` 邊偶被 cap 砍掉沒進 model triples，但 **evidence recall 仍 100%**（圖確實有撈到）。LLM-judge 93.8 / 97.4% 反映同一批多跳與 interlock 屬性偶爾漏抽。
 
 > **限制**：3 SOP / 48 邊的圖太小，2-hop 遍歷幾乎撈回整張圖，retrieval 沒被真正壓測——這正是下方 scale 壓測的動機。LLM-judge 與生成用同一個 vLLM（self-grading bias），keyword 與 recall 為 model-independent 的交叉驗證。
 
-### 2. Graph RAG vs Vector RAG（keyword 基線，10 題）
+### 2. Graph RAG vs Vector RAG（keyword 基線，27 可答題 + 12 負例）
 
 把同一套 pipeline 換成純向量檢索做對照（keyword 子字串比對，與調參同批題，**會高估**，僅作基線參考）：
 
 | 指標 | Graph RAG | Vector RAG |
 |------|-----------|------------|
-| Answer 命中率 | **100%** (24/24) | 62.5% (15/24) |
-| **多跳查詢** | **100%** (8/8) | 37.5% (3/8) |
-| 正確攔截非 SOP 問題 | 2/2 | 2/2 |
-| 平均端對端延遲 | ~3.9 s | ~3.7 s |
+| Retrieval 命中率 | **100%** (27/27) | 67% (18/27) |
+| Answer 命中率 | **96%** (26/27) | 37% (10/27) |
+| 結構題 keyword（n=17：步驟順序/依賴/跨文件） | **94%** (31/33) | 39% (13/33) |
+| 負例攔截（離題/注入/拒答，12 題） | 12/12 | 12/12 |
+| 平均端對端延遲 | ~3.7 s | ~3.8 s（wash） |
 
-差距集中在需要圖結構推理的問題（步驟順序、`DEPENDS_ON` 鏈、跨文件依賴）——Vector RAG 在這些題上完全失敗。
+差距集中在需要圖結構推理的問題（步驟順序、`DEPENDS_ON` 鏈、跨文件依賴）。Graph 唯一的 miss 是一題多跳依賴鏈（borderline，低相似度 `DEPENDS_ON` 邊偶被 cap 砍掉；4 次重跑穩定 96%）；延遲與向量基線基本持平（wash）。
 
 ### 3. Scale 壓力測試（10-SOP 合成圖）
 
@@ -280,7 +282,7 @@ R=100% 後，q05/q06 仍 A⚠——LLM 沒有完整提取 triple 屬性值（`re
 
 ### 向量庫：Chroma → Qdrant
 
-由 in-process Chroma（`persist_directory`）改為獨立 Qdrant server。讀寫統一走 LangChain `QdrantVectorStore`（payload schema 一致）；ingest 用 `force_recreate=True`，刪除來源 `.md` 後不留孤兒向量。embedding 模型不變（`paraphrase-multilingual-MiniLM-L12-v2`，384 維 Cosine），檢索品質不變：Graph RAG 維持 100%，Vector baseline 54%→62.5%（HNSW 排序與 vLLM 批次的細微差異）。
+由 in-process Chroma（`persist_directory`）改為獨立 Qdrant server。讀寫統一走 LangChain `QdrantVectorStore`（payload schema 一致）；ingest 用 `force_recreate=True`，刪除來源 `.md` 後不留孤兒向量。此次遷移時 embedding 仍為 `paraphrase-multilingual-MiniLM-L12-v2`；**後來文件 embedding 換成 `multilingual-e5-small`（384 維 Cosine），reranker 仍為 MiniLM-L12-v2**，Qdrant 維度不變、最新檢索數字見[評估](#評估)。
 
 ### Scaling：token 預算裁切 + 邊 gloss enrichment
 
