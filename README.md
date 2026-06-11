@@ -13,7 +13,7 @@
 
 ## 亮點
 
-- **結構化圖譜 RAG**：步驟順序、`DEPENDS_ON` 鏈、跨文件依賴、設備聯鎖等「多跳」問題，Graph RAG **100%**，傳統 Vector RAG 僅 **37.5%**。
+- **結構化圖譜 RAG**：步驟順序、`DEPENDS_ON` 鏈、跨文件依賴、設備聯鎖等結構/多跳問題，**結構題命中率 Graph 94% vs 傳統 Vector 39%**（整體答案命中率 96% vs 37%）。
 - **嚴謹評估，不是自我感覺良好**：held-out dev/test 切分、retrieval **recall@k**、**LLM-as-judge**、拒答/離題/注入**負例**、3 次重跑報變異——不是 keyword 子字串自我安慰。
 - **為圖規模成長預留防護**：token 預算裁切（防 context 溢出）、低相似度邊 gloss enrichment（詳見 [工程決策](#工程決策與優化歷程)）。
 - **四道 guardrail**：注入偵測 → 主題過濾 → 證據充足性 → 事實接地性，降低離題與幻覺。
@@ -103,7 +103,7 @@ pip install streamlit requests
 streamlit run demo_app.py               # → http://localhost:8501
 ```
 
-含側邊欄範例題、token-by-token 串流、可展開檢視送入 LLM 的 `model_triples` 與 4 道 guardrail 結果。
+含完整題庫（點擊查詢）、Graph vs Vector 並排對照、可展開檢視送入 LLM 的 `model_triples`、4 道 guardrail 結果，以及 gold triple 檢索對照。
 （前提：`docker compose up -d` 已執行、API 在 `localhost:8000`。）
 
 ### 執行評測
@@ -166,6 +166,7 @@ curl -X POST http://localhost:8000/v1/ask \
 
 | 端點 | 說明 |
 |------|------|
+| `POST /v1/ask/vector` | 純向量檢索基線（與 Graph RAG 並排對照用） |
 | `GET /health` | Liveness check |
 | `GET /v1/health` | Deep health（Neo4j + vLLM + Qdrant） |
 | `POST /v1/ingest` | 動態新增節點/邊（含 `source_file` 版本追蹤） |
